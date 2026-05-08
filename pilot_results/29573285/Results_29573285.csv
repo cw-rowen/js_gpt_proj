@@ -1,0 +1,3 @@
+﻿"TrialNumber","ProductFilePath","product_ENG","product_KOR","genre","classification","price_range","InfoType","Q_Order","Credibility_EX","Credibility_CON","Credibility_PEER","Credibility_general","Preference","Credibility_EX_RT","Credibility_CON_RT","Credibility_PEER_RT","Credibility_general_RT","Preference_RT"
+"1","caviar.png","caviar","캐비어","FOOD","HE","HIGH","consensus","preference-credGen","","","","4","4","","","","2.494668625004124","2.1400802090065554"
+"2","skin care device.png","skin care device","워터 필링기","SELF-CARE","UT","HIGH","peer","preference-credGen","","","","2","5","","","","1.1779689170070924","1.5410311659798026"

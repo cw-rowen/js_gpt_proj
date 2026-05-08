@@ -1,0 +1,33 @@
+TrialNumber,ProductFilePath,product_ENG,product_KOR,genre,classification,price_range,InfoType,Q_Order,Credibility_EX,Credibility_CON,Credibility_PEER,Credibility_general,Preference,Credibility_EX_RT,Credibility_CON_RT,Credibility_PEER_RT,Credibility_general_RT,Preference_RT
+1,stamp.png,stamp,?„ì¥,STA,HE,LOW,consensus,credibility_EX-credibility_CON-credibility_PEER-preference-credibility_general,1,7,3,5,2,0.2599522,0.2400879,0.3353743,0.765941,0.2346256
+2,organic olive oil.png,organic olive oil,?‘ìŠ¤?¸ë¼ ë²„ì§„ ?¬ë¦¬ë¸??¤ì¼,FOOD,UT,HIGH,expert,credibility_CON-credibility_EX-credibility_PEER-preference-credibility_general,6,1,1,5,5,0.4107454,0.5010316,0.2449853,0.5918279,0.1806263
+3,wax seal kit.png,wax seal kit,?¤ë§ ?ìŠ¤ ?¤íŠ¸,STA,HE,HIGH,peer,credibility_EX-credibility_PEER-credibility_general-credibility_CON-preference,1,2,6,3,1,0.2162068,0.2577613,0.2900669,1.3973891,0.2357787
+4,cake.png,cake,ì¼€?´í¬,FOOD,HE,HIGH,gpt,credibility_CON-credibility_PEER-credibility_EX-credibility_general-preference,2,1,3,5,5,0.340767,0.2843839,1.2077744,2.7464962,0.3252705
+5,chips.png,chips,ê°ìì¹?,FOOD,HE,LOW,peer,preference-credibility_PEER-credibility_EX-credibility_general-credibility_CON,1,3,6,5,4,0.2451186,0.355315,0.4219202,0.4346595,0.2396329
+6,tea gift set.png,tea gift set,ë§ì°¨ ?¸íŠ¸,FOOD,HE,HIGH,consensus,credibility_CON-preference-credibility_PEER-credibility_general-credibility_EX,5,1,2,5,6,0.3802106,0.3098165,0.2809802,0.2895611,0.2630546
+7,egronomics chair seat.png,egronomics chair seat,?ì„¸êµì • ë°©ì„,STA,UT,HIGH,gpt,preference-credibility_CON-credibility_EX-credibility_PEER-credibility_general,6,1,2,7,4,0.3762724,0.2708498,0.2192417,0.2461442,0.2477868
+8,fountain pen.png,fountain pen,ë§Œë…„??,STA,HE,HIGH,expert,credibility_PEER-credibility_CON-preference-credibility_EX-credibility_general,7,1,1,5,3,0.2546259,0.2046588,0.2592939,0.3194185,0.3095192
+9,stickers.png,stickers,?¤í‹°ì»?,STA,HE,LOW,peer,credibility_EX-credibility_PEER-credibility_CON-credibility_general-preference,1,2,5,4,3,0.2151918,0.2813166,0.3929421,0.7680575,0.3352777
+10,chocolate.png,chocolate,ì´ˆì½œë¦?,FOOD,HE,LOW,gpt,credibility_EX-credibility_general-preference-credibility_PEER-credibility_CON,2,2,2,5,6,0.2747269,0.3344455,0.3657792,0.3454929,0.2994757
+11,frozen pizza.png,frozen pizza,?‰ë™ ?¼ì,FOOD,UT,LOW,expert,credibility_general-credibility_CON-credibility_PEER-credibility_EX-preference,7,1,1,6,5,0.2902502,0.1804162,0.1786471,0.2779821,0.3105401
+12,canned tuna.png,canned tuna,ì°¸ì¹˜ìº?,FOOD,UT,LOW,consensus,preference-credibility_EX-credibility_PEER-credibility_CON-credibility_general,1,6,3,5,2,0.296042,0.2813379,0.4697911,0.3556724,0.3102998
+13,cable organizer.png,cable organizer,ì¼€?´ë¸” ?•ë¦¬ ?…ì„¸?œë¦¬,STA,UT,LOW,expert,credibility_PEER-credibility_CON-credibility_EX-preference-credibility_general,6,1,1,5,5,0.3103806,0.2174187,0.2146582,0.3761854,0.6831481
+14,oil pastels.png,oil pastels,?¤ì¼ ?ŒìŠ¤???¸íŠ¸,STA,HE,HIGH,consensus,credibility_EX-credibility_PEER-credibility_CON-preference-credibility_general,1,6,2,4,2,0.365866,0.527429,0.3718518,0.9550777,0.168814
+15,caviar.png,caviar,ìºë¹„??,FOOD,HE,HIGH,peer,credibility_EX-preference-credibility_general-credibility_CON-credibility_PEER,1,3,5,3,3,0.2447843,0.2810444,0.308872,0.2409336,0.3801642
+16,decorative magnet.png,decorative magnet,?¥ì‹ ?ì„,STA,HE,LOW,gpt,credibility_PEER-credibility_EX-preference-credibility_CON-credibility_general,3,2,2,4,1,0.309302,0.8887066,0.3062524,0.4409209,0.2734215
+17,supplements.png,supplements,ë©€?°ë¹„?€ë¯?,FOOD,UT,HIGH,gpt,credibility_general-credibility_PEER-credibility_EX-credibility_CON-preference,5,1,3,5,5,0.2251104,0.2650887,0.259838,0.4703789,0.2342171
+18,bread.png,bread,?ë¹µ,FOOD,UT,LOW,peer,credibility_PEER-credibility_general-credibility_CON-preference-credibility_EX,1,4,6,5,5,0.1888061,0.3057545,0.3357898,1.0608253,0.2852212
+19,cookies.png,cookies,ì¿ í‚¤,FOOD,HE,LOW,consensus,preference-credibility_general-credibility_CON-credibility_PEER-credibility_EX,1,6,2,3,4,0.2453795,0.2860829,0.2606013,0.285352,0.8671819
+20,laptop stand.png,laptop stand,?¸íŠ¸ë¶?ê±°ì¹˜?€,STA,UT,HIGH,expert,preference-credibility_PEER-credibility_general-credibility_EX-credibility_CON,6,1,1,5,6,0.264818,0.1840793,0.2193024,0.2454646,0.330286
+21,mango set.png,mango set,? í”Œë§ê³  ?¸íŠ¸,FOOD,UT,HIGH,consensus,credibility_PEER-credibility_general-preference-credibility_EX-credibility_CON,1,6,2,5,4,0.3603385,0.3010178,0.8278366,0.4216481,3.1357835
+22,scientific calculator.png,scientific calculator,ê³µí•™ ê³„ì‚°ê¸?,STA,UT,HIGH,peer,credibility_CON-credibility_PEER-credibility_general-credibility_EX-preference,1,3,5,5,4,0.2346977,0.7200299,0.315368,0.3506862,0.844178
+23,decorative tape.png,decorative tape,?”ì???Œì´??,STA,HE,LOW,expert,credibility_PEER-credibility_EX-credibility_CON-preference-credibility_general,4,1,2,5,3,1.2061716,0.2551101,0.6186948,0.3255264,2.036638
+24,mouse pad.png,mouse pad,ë§ˆìš°???¨ë“œ,STA,UT,LOW,gpt,credibility_EX-credibility_general-credibility_PEER-credibility_CON-preference,6,1,2,6,4,0.3014593,0.1816016,0.3117786,0.2326813,0.3950696
+25,steak 500g.png,steak 500g,?Œê³ ê¸?ì±„ë 500g,FOOD,UT,HIGH,peer,preference-credibility_CON-credibility_general-credibility_EX-credibility_PEER,1,3,6,6,6,0.2459574,0.3202765,0.3105661,0.4307716,0.2847611
+26,pen.png,pen,ë³¼íœ,STA,UT,LOW,consensus,credibility_PEER-preference-credibility_CON-credibility_EX-credibility_general,2,6,1,4,3,0.5917066,0.2839859,0.2601695,0.4695325,0.2255828
+27,memo pads.png,memo pads,ë©”ëª¨ì§€,STA,UT,LOW,peer,credibility_general-credibility_PEER-credibility_EX-preference-credibility_CON,1,3,5,4,5,0.1958272,0.4402983,0.2852289,0.4046962,0.3661556
+28,cup ramen.png,cup ramen,ì»µë¼ë©?,FOOD,UT,LOW,gpt,credibility_CON-credibility_PEER-preference-credibility_general-credibility_EX,3,3,3,5,4,0.2349344,1.2763677,0.3143033,1.61391,0.7787856
+29,instant coffee.png,instant coffee,ì»¤í”¼ ë¯¹ìŠ¤,FOOD,HE,LOW,expert,credibility_PEER-credibility_CON-credibility_EX-credibility_general-preference,6,1,1,5,3,0.271348,0.2338952,0.328531,0.2873339,0.2422759
+30,manuka honey.png,manuka honey,ë§ˆëˆ„ì¹?ê¿€,FOOD,HE,HIGH,expert,credibility_general-credibility_PEER-preference-credibility_EX-credibility_CON,6,1,1,5,2,0.3467045,0.1796315,0.2161049,0.3528969,0.2475499
+31,leather notebook.png,leather notebook,ê°€ì£??¸íŠ¸,STA,UT,HIGH,consensus,credibility_CON-credibility_general-preference-credibility_EX-credibility_PEER,1,5,2,4,3,0.5613205,0.3238437,0.240182,0.2849285,0.3221342
+32,paper weight.png,paper weight,ë¬¸ì§„,STA,HE,HIGH,gpt,credibility_general-credibility_EX-credibility_CON-credibility_PEER-preference,1,2,3,5,6,0.2924659,0.4550857,0.3335951,0.5192273,0.2814841
