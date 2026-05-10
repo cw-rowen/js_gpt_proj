@@ -2,8 +2,9 @@
  * experiment.js – Endorsement Study (Full Port from behavioral_opt.py)
  ******************************************************************************/
 
-import { core, util, visual } from './lib/psychojs-2026.1.3.js';
+import { core, data, util, visual } from './lib/psychojs-2026.1.3.js';
 const { PsychoJS } = core;
+const { TrialHandler } = data;
 const { Scheduler } = util;
 
 
@@ -464,16 +465,30 @@ async function experimentInit() {
   // ── keyboard for scale (arrow keys + return) ──
   scaleKb = new core.Keyboard({ psychoJS, clock: new util.Clock(), waitForStart: true });
 
-  // ── load CSVs ────────────────────────────────
-  // In PsychoJS 2026, serverManager.getResource() for a registered CSV
-  // returns an already-parsed array of row objects (one object per row,
-  // keyed by the header names). No manual parsing needed.
-  const expertRows  = psychoJS.serverManager.getResource('expert_labels.csv');
+  // ── load CSVs via TrialHandler ───────────────
+  // TrialHandler is the only supported PsychoJS API for parsing CSV/XLSX
+  // resources. We create a throw-away handler for each file, iterate it
+  // to collect plain row objects, then discard the handler.
+  const _expertHandler = new TrialHandler({
+    psychoJS, nReps: 1,
+    method: TrialHandler.Method.SEQUENTIAL,
+    trialList: 'expert_labels.csv',
+    name: '_expertLoader',
+  });
+  const expertRows = [];
+  for (const row of _expertHandler) expertRows.push(row);
   expertRows.forEach(row => {
     expertMap[normStr(row.product_ENG)] = String(row.expert_label).trim();
   });
 
-  const productRows = psychoJS.serverManager.getResource('product_list.csv');
+  const _productHandler = new TrialHandler({
+    psychoJS, nReps: 1,
+    method: TrialHandler.Method.SEQUENTIAL,
+    trialList: 'product_list.csv',
+    name: '_productLoader',
+  });
+  const productRows = [];
+  for (const row of _productHandler) productRows.push(row);
 
   const reqCols    = ['product_ENG', 'product_KOR', 'genre', 'classification', 'price_range'];
   const missingCols = reqCols.filter(c => !(c in productRows[0]));
