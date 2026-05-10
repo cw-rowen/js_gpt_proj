@@ -213,6 +213,8 @@ psychoJS.openWindow({
   backgroundImage: '',
   backgroundFit:   'none',
 });
+document.body.style.cursor = 'none';
+psychoJS.window._renderer.view.style.cursor = 'none';
 
 
 psychoJS.schedule(psychoJS.gui.DlgFromDict({
@@ -902,7 +904,10 @@ function trialRoutineEachFrame(tIdx) {
 
 function trialRoutineEnd(tIdx) {
   return async function () {
+
+    // Keep fixation visible while next trial loads
     allStimOff();
+    fixStim.setAutoDraw(true);
 
     // Pad unanswered questions with empty strings for clean CSV columns
     ALL_Q_KEYS.forEach(q => {
@@ -914,16 +919,18 @@ function trialRoutineEnd(tIdx) {
 
     psychoJS.experiment.nextEntry();
 
-    // Pre-fetch next trial's images (fire-and-forget)
-    // Ensure next trial resources are fully loaded
+    // Preload next trial before continuing
     const nextIdx = tIdx + 1;
-      if (nextIdx < trialRows.length) {
-        await prefetchTrialImages(nextIdx);
-      }
+    if (nextIdx < trialRows.length) {
+      await prefetchTrialImages(nextIdx);
+    }
+
+    // Remove fixation before next routine starts
+    fixStim.setAutoDraw(false);
+
     return Scheduler.Event.NEXT;
   };
 }
-
 
 // ─────────────────────────────────────────────
 //  11. QUIT

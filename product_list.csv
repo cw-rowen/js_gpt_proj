@@ -15,7 +15,7 @@ cup_ramen,컵라면,"₩1,000.00 ",FOOD,UT,LOW
 decorative_magnet,장식 자석,"₩5,000.00 ",STA,HE,LOW
 decorative_tape,디자인 테이프,"₩4,000.00 ",STA,HE,LOW
 disposable_camera,일회용 카메라,"₩24,500.00 ",ELEC,HE,LOW
-egronomics_chair_seat,자세교정 방석,"₩44,500.00 ",STA,UT,HIGH
+ergonomics_chair_seat,자세교정 방석,"₩44,500.00 ",STA,UT,HIGH
 egyptian_cotton_sheets_set,이집트 코튼 침구 커버,"₩145,000.00 ",SELF-CARE,HE,HIGH
 electric_toothbrush,전동 칫솔,"₩116,000.00 ",SELF-CARE,UT,HIGH
 fountain_pen,만년필,"₩87,500.00 ",STA,HE,HIGH
@@ -44,7 +44,7 @@ portable_charger,휴대용 충전기,"₩20,500.00 ",ELEC,UT,LOW
 portable_humidifier,휴대용 가습기,"₩32,000.00 ",ELEC,UT,LOW
 projector,빔 프로젝터,"₩662,500.00 ",ELEC,HE,HIGH
 rc_car,RC 카,"₩46,000.00 ",ELEC,HE,LOW
-roll-on_mini_perfume,롤온 향수,"₩25,500.00 ",SELF-CARE,HE,LOW
+roll_on_mini_perfume,롤온 향수,"₩25,500.00 ",SELF-CARE,HE,LOW
 scented_hand_cream,퍼퓸 핸드크림,"₩14,500.00 ",SELF-CARE,HE,LOW
 scientific_calculator,SSD external storage 2TB,"₩23,500.00 ",STA,UT,HIGH
 shampoo,샴푸,"₩22,000.00 ",SELF-CARE,UT,LOW
