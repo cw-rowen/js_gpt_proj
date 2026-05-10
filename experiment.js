@@ -3,7 +3,7 @@
  * * Integration of behavioral_opt.py logic with samplesetup.js architecture.
  ******************************************************************************/
 
-import { core, data, util, visual } from './lib/psychojs-2023.2.2.js';
+import { core, data, util, visual } from './lib/psychojs-2026.1.3.js';
 const { PsychoJS } = core;
 const { TrialHandler } = data;
 const { Scheduler } = util;
