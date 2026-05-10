@@ -37,8 +37,8 @@ const CFG = {
   scale_x_right:          0.42,
 
   // endorser label location
-  label_x:               -0.55,
-  label_y:                0.42,
+  label_x:               -0.45,
+  label_y:                0.35,
 };
 
 const INFO_CODE_MAP = {
@@ -389,9 +389,8 @@ async function experimentInit() {
     bold:        CFG.text_bold,
     alignText:   'left',
     anchorHoriz: 'left',
-    anchorVert:  'top',
     units:       'height',
-    wrapWidth:   1.0,
+    wrapWidth:   undefined,
     depth:       -1,
   });
 
@@ -766,17 +765,37 @@ function trialRoutineEachFrame(tIdx) {
     // ── fix1 ──────────────────────────────────────────────────────────────────
     if (_trialPhase === 'fix1') {
       if (t >= _phaseStartT + _phaseDuration) {
+
         fixStim.setAutoDraw(false);
         psychoJS.experiment.addData('fix1.stopped', t);
-        _phaseStartT = t; _phaseDuration = CFG.info_dur; _trialPhase = 'info';
-        if (_currentLabelText) { labelStim.setText(_currentLabelText); labelStim.setAutoDraw(true); }
-        infoStim.setAutoDraw(true);
-        psychoJS.experiment.addData('info.started', _phaseStartT);
-        psychoJS.experiment.addData('info.fname',
-          `stim/02_information/${_currentTrial.product_ENG}_${INFO_CODE_MAP[_currentInfoType]}.png`);
-      }
-      return Scheduler.Event.FLIP_REPEAT;
-    }
+
+       _phaseStartT = t;
+        _phaseDuration = CFG.info_dur;
+       _trialPhase = 'info';
+
+       if (_currentLabelText) {
+         labelStim.setText(_currentLabelText);
+          labelStim.setAutoDraw(true);
+       }
+
+       infoStim.setAutoDraw(true);
+
+       // PRELOAD NEXT TRIAL HERE
+       const nextIdx = tIdx + 1;
+       if (nextIdx < trialRows.length) {
+         prefetchTrialImages(nextIdx);
+       }
+
+       psychoJS.experiment.addData('info.started', _phaseStartT);
+
+       psychoJS.experiment.addData(
+         'info.fname',
+         `stim/02_information/${_currentTrial.product_ENG}_${INFO_CODE_MAP[_currentInfoType]}.png`
+       );
+  }
+
+  return Scheduler.Event.FLIP_REPEAT;
+}
 
     // ── info ──────────────────────────────────────────────────────────────────
     if (_trialPhase === 'info') {
@@ -918,16 +937,6 @@ function trialRoutineEnd(tIdx) {
     });
 
     psychoJS.experiment.nextEntry();
-
-    // Preload next trial before continuing
-    const nextIdx = tIdx + 1;
-    if (nextIdx < trialRows.length) {
-      await prefetchTrialImages(nextIdx);
-    }
-
-    // Remove fixation before next routine starts
-    fixStim.setAutoDraw(false);
-
     return Scheduler.Event.NEXT;
   };
 }
