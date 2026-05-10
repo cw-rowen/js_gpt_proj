@@ -510,14 +510,18 @@ const _fetchedTrials = new Set();
 
 async function prefetchTrialImages(tIdx) {
   if (tIdx >= trialRows.length || _fetchedTrials.has(tIdx)) return;
-  _fetchedTrials.add(tIdx);
+
   try {
     await psychoJS.serverManager.prepareResources(
       trialResources(trialRows[tIdx], infoAssignment[tIdx])
     );
-  } catch (e) { console.warn(`prefetchTrialImages(${tIdx}) failed:`, e); }
-}
 
+    _fetchedTrials.add(tIdx);
+
+  } catch (e) {
+    console.warn(`prefetchTrialImages(${tIdx}) failed:`, e);
+  }
+}
 
 // ─────────────────────────────────────────────
 //  7. INTRO ROUTINE
@@ -911,9 +915,11 @@ function trialRoutineEnd(tIdx) {
     psychoJS.experiment.nextEntry();
 
     // Pre-fetch next trial's images (fire-and-forget)
+    // Ensure next trial resources are fully loaded
     const nextIdx = tIdx + 1;
-    if (nextIdx < trialRows.length) prefetchTrialImages(nextIdx);
-
+      if (nextIdx < trialRows.length) {
+        await prefetchTrialImages(nextIdx);
+      }
     return Scheduler.Event.NEXT;
   };
 }
