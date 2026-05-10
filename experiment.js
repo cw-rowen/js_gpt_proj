@@ -3,24 +3,12 @@
  *
  * Image-loading strategy
  * ──────────────────────
- * STARTUP  (psychoJS.start resources):
- *   Only the 11 files that are needed before any trial can begin:
- *     • product_list.csv, expert_labels.csv
- *     • stim/00_fixation/fixation.png
- *     • stim/04_intro/intro.png
- *     • stim/03_question/credibility_{EX|CON|PEER|general}.png, preference.png  (5)
- *     • default.png  (Pavlovia placeholder – initialises ImageStim objects)
- *
- * PER-TRIAL (trialRoutineBegin):
- *   The product image for trial N and the info image for trial N are fetched
- *   via psychoJS.serverManager.prepareResources() while the previous trial's
- *   final fixation / question inter-stimulus intervals are still running.
- *   For trial 1 the fetch happens synchronously in experimentInit so the
- *   first product image is ready by the time the intro fixation ends.
- *   For all subsequent trials the next trial's images are pre-fetched at the
- *   end of the current trial (trialRoutineEnd), giving the inter-trial
- *   fixation time (~0.5–1.5 s) for the download to complete before the
- *   image is actually needed.
+ * STARTUP (psychoJS.start resources): only 11 files.
+ * PER-TRIAL: product + info images are lazy-loaded via
+ *   psychoJS.serverManager.prepareResources() one trial ahead.
+ *   Trial 0 is fetched at the end of experimentInit (concurrent with
+ *   the intro screen + 3-second fixation). Trial N+1 is fetched
+ *   fire-and-forget in trialRoutineEnd(N).
  ******************************************************************************/
 
 import { core, data, util, visual } from './lib/psychojs-2026.1.3.js';
@@ -30,36 +18,31 @@ const { Scheduler } = util;
 
 
 // ─────────────────────────────────────────────
-//  1. CONFIGURATION  (mirrors CFG in behavioral_opt.py)
+//  1. CONFIGURATION
 // ─────────────────────────────────────────────
 
 const CFG = {
-  // timing
   product_dur:            4.0,
   info_dur:               9.0,
   fix_min:                0.5,
   fix_max:                1.5,
 
-  // debug
   debug:                  false,
   debug_info_type:        'expert',   // 'expert' | 'consensus' | 'peer' | 'gpt'
 
-  // randomisation
   max_run:                2,
   question_order_max_run: 3,
 
-  // window
   bg_color:               'black',
 
-  // text
   font:                   'NanumGothic',
-  text_height_big:        0.08,   // endorser label
-  text_height_medium:     0.04,   // Likert numbers
-  text_height_small:      0.045,  // Likert endpoint descriptions
+  text_height_big:        0.08,
+  text_height_medium:     0.04,
+  text_height_small:      0.045,
   text_bold:              true,
   text_color:             'white',
 
-  // Likert scale  (height units)
+  // Likert scale (height units)
   scale_n:                7,
   circle_radius:          0.045,
   scale_y:               -0.15,
@@ -68,9 +51,11 @@ const CFG = {
   scale_x_left:          -0.42,
   scale_x_right:          0.42,
 
-  // Endorser label  (height units, top-left, mirrors Python label_x / label_y)
+  // Endorser label: upper-left, above the stimulus image.
+  // In height units on a 16:9 display, ±0.5 is the vertical edge,
+  // so 0.35 with anchorVert:'top' sits safely within the screen.
   label_x:               -0.7,
-  label_y:                0.4,
+  label_y:                0.35,
 };
 
 const INFO_CODE_MAP = {
@@ -85,11 +70,6 @@ const INFO_LABEL_MAP = {
   gpt:       '[ChatGPT]',
 };
 
-// expert_labels.csv has NO header row; columns are:  product , expert_label
-// Python reads it with  names=["product","expert"]
-// We expose them here with the same logical names.
-const EXPERT_CSV_COLS = { product: 0, label: 1 };   // zero-based column indices
-
 const QUESTION_DEFS = {
   credEX:     { img: 'stim/03_question/credibility_EX.png',      left: '전혀 전문적이지 않다', right: '매우 전문적이다' },
   credCON:    { img: 'stim/03_question/credibility_CON.png',     left: '전혀 반영하지 않는다', right: '매우 반영한다'  },
@@ -100,6 +80,9 @@ const QUESTION_DEFS = {
 
 const GPT_QUESTIONS   = ['credEX', 'credCON', 'credPEER', 'credGen', 'preference'];
 const OTHER_QUESTIONS = ['credGen', 'preference'];
+
+// All result columns written every trial (empty string when question not asked)
+const ALL_Q_KEYS = ['credEX', 'credCON', 'credPEER', 'credGen', 'preference'];
 
 
 // ─────────────────────────────────────────────
@@ -128,7 +111,7 @@ function constrainedShuffle(rows, keyFn, maxRun = 2, maxTries = 20000) {
     shuffleInPlace(rows);
     if (isValidRun(rows.map(keyFn), maxRun)) return rows;
   }
-  console.warn('constrainedShuffle: could not satisfy run constraint – returning last attempt');
+  console.warn('constrainedShuffle: returning last attempt');
   return rows;
 }
 
@@ -146,18 +129,15 @@ function assignInfoTypesBalanced(rows, infoTypes, maxRun = 2, maxTries = 5000) {
     for (let i = 0; i < n; i++) {
       const ck = combos[i];
       let candidates = [...infoTypes];
-
       if (assigned.length >= maxRun &&
           assigned.slice(-maxRun).every(x => x === assigned[assigned.length - 1])) {
         candidates = candidates.filter(t => t !== assigned[assigned.length - 1]);
       }
       if (candidates.length === 0) { ok = false; break; }
-
       if (!perCombo[ck]) perCombo[ck] = {};
       const scored = candidates.map(t => [perCombo[ck][t] || 0, overall[t] || 0, Math.random(), t]);
       scored.sort((a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2]);
       const chosen = scored[0][3];
-
       assigned.push(chosen);
       overall[chosen]      = (overall[chosen]      || 0) + 1;
       perCombo[ck][chosen] = (perCombo[ck][chosen] || 0) + 1;
@@ -182,14 +162,10 @@ function buildBalancedQuestionOrders(allOrders, nTrials, maxRun = 3, maxTries = 
   for (let attempt = 0; attempt < maxTries; attempt++) {
     let pool = [];
     while (pool.length < nTrials) {
-      const chunk = [...allOrders];
-      shuffleInPlace(chunk);
-      pool.push(...chunk);
+      const chunk = [...allOrders]; shuffleInPlace(chunk); pool.push(...chunk);
     }
     pool = pool.slice(0, nTrials);
-
-    const arranged = [];
-    let remaining  = [...pool];
+    const arranged = []; let remaining = [...pool];
     while (remaining.length > 0) {
       const valid = remaining.filter(o => isValidPositionRuns(arranged, o, maxRun));
       if (valid.length === 0) break;
@@ -228,14 +204,10 @@ function linspace(start, stop, num) {
   return Array.from({ length: num }, (_, i) => start + i * step);
 }
 
-// Build the resource descriptor for one trial's images (product + info).
 function trialResources(trial, infoType) {
   const prod = `stim/01_product/${trial.product_ENG}.png`;
   const info = `stim/02_information/${trial.product_ENG}_${INFO_CODE_MAP[infoType]}.png`;
-  return [
-    { name: prod, path: prod },
-    { name: info, path: info },
-  ];
+  return [{ name: prod, path: prod }, { name: info, path: info }];
 }
 
 
@@ -292,27 +264,20 @@ flowScheduler.add(quitPsychoJS, '', true);
 
 dialogCancelScheduler.add(quitPsychoJS, '', false);
 
-// ── STARTUP RESOURCES: only 11 files ─────────────────────────────────────────
-// Product and info images are NOT listed here.
-// They are fetched one trial at a time via prepareResources() in trialRoutineBegin.
+// Only 11 files preloaded at startup – trial images are lazy-loaded.
 psychoJS.start({
-  expName:  'Endorsement Study',
+  expName: 'Endorsement Study',
   expInfo,
   resources: [
-    // ── Condition / label data ──
     { name: 'product_list.csv',                         path: 'product_list.csv'                         },
     { name: 'expert_labels.csv',                        path: 'expert_labels.csv'                        },
-    // ── Fixation (reused throughout) ──
     { name: 'stim/00_fixation/fixation.png',            path: 'stim/00_fixation/fixation.png'            },
-    // ── Intro screen ──
     { name: 'stim/04_intro/intro.png',                  path: 'stim/04_intro/intro.png'                  },
-    // ── Question background images (5, reused every trial) ──
     { name: 'stim/03_question/credibility_EX.png',      path: 'stim/03_question/credibility_EX.png'      },
     { name: 'stim/03_question/credibility_CON.png',     path: 'stim/03_question/credibility_CON.png'     },
     { name: 'stim/03_question/credibility_PEER.png',    path: 'stim/03_question/credibility_PEER.png'    },
     { name: 'stim/03_question/credibility_general.png', path: 'stim/03_question/credibility_general.png' },
     { name: 'stim/03_question/preference.png',          path: 'stim/03_question/preference.png'          },
-    // ── Pavlovia placeholder (initialises ImageStim objects before first trial) ──
     { name: 'default.png', path: 'https://pavlovia.org/assets/default/default.png' },
   ],
 });
@@ -328,7 +293,6 @@ let globalClock, routineTimer;
 let currentLoop;
 let frameDur;
 
-// Stimuli – built once in experimentInit, reused every trial
 let introClock, introStim, introKey;
 let introFixClock;
 let fixStim;
@@ -340,7 +304,6 @@ let scale_leftDesc  = null;
 let scale_rightDesc = null;
 let scaleKb;
 
-// Computed in experimentInit, consumed by trial loop
 let trialRows      = [];
 let infoAssignment = [];
 let qOrdersGPT     = [];
@@ -389,19 +352,18 @@ async function experimentInit() {
     CFG.fix_max     = 0.2;
   }
 
-  // ── clocks ──────────────────────────────────
   introClock    = new util.Clock();
   introFixClock = new util.Clock();
   globalClock   = new util.Clock();
   routineTimer  = new util.CountdownTimer();
 
-  // ── dialog values ───────────────────────────
   const ID = String(expInfo['Participant ID']).trim();
   peerNames = [1, 2, 3, 4].map(i => String(expInfo[`Peer ${i}`]).trim());
   if (!ID)                           console.warn('Participant ID is empty.');
   if (peerNames.some(n => n === '')) console.warn('One or more Peer name fields are empty.');
 
-  // ── intro image ─────────────────────────────
+  // ── stimuli ──────────────────────────────────
+
   introStim = new visual.ImageStim({
     win, name: 'introStim',
     image: 'stim/04_intro/intro.png',
@@ -409,34 +371,33 @@ async function experimentInit() {
   });
   introKey = new core.Keyboard({ psychoJS, clock: new util.Clock(), waitForStart: true });
 
-  // ── fixation (single instance reused across all fixation phases) ──
   fixStim = new visual.ImageStim({
     win, name: 'fixStim',
     image: 'stim/00_fixation/fixation.png',
     pos: [0, 0], units: 'height', anchor: 'center',
   });
 
-  // ── product image (path swapped per trial via setImage) ──
+  // depth:0 for stimuli; labelStim uses depth:-1 to render in front
   productStim = new visual.ImageStim({
     win, name: 'productStim',
     image: 'default.png',
-    pos: [0, 0.05], units: 'height', anchor: 'center',
+    pos: [0, 0], units: 'height', anchor: 'center',
+    depth: 0,
   });
 
-  // ── info image (path swapped per trial via setImage) ──
   infoStim = new visual.ImageStim({
     win, name: 'infoStim',
     image: 'default.png',
-    pos: [0, 0.05], units: 'height', anchor: 'center',
+    pos: [0, 0], units: 'height', anchor: 'center',
+    depth: 0,
   });
 
-  // ── endorser label (text swapped per trial) ──
-  // Mirrors Python: pos=(label_x, label_y) in norm units, top-left anchor.
-  // In PsychoJS height units label_x=-0.7, label_y=+0.4 places it
-  // in the upper-left quadrant, matching the Python norm (−0.75, 0.75).
+  // depth:-1 ensures the label renders in front of infoStim/productStim.
+  // anchorVert:'top' so label_y is the top edge of the text block.
+  // wrapWidth:1.0 gives enough horizontal room for Korean text.
   labelStim = new visual.TextStim({
     win, name: 'labelStim',
-    text: '',
+    text:        '',
     pos:         [CFG.label_x, CFG.label_y],
     height:      CFG.text_height_big,
     color:       new util.Color(CFG.text_color),
@@ -446,117 +407,89 @@ async function experimentInit() {
     anchorHoriz: 'left',
     anchorVert:  'top',
     units:       'height',
-    wrapWidth:   1.4,
+    wrapWidth:   1.0,
+    depth:       -1,
   });
 
-  // ── question background image (path swapped per question) ──
   questionStim = new visual.ImageStim({
     win, name: 'questionStim',
     image: 'stim/03_question/credibility_general.png',
     pos: [0, 0.1], units: 'height', anchor: 'center',
+    depth: 0,
   });
 
-  // ── Likert scale circles + numbers ──────────
+  // ── Likert scale ─────────────────────────────
   const xs       = linspace(CFG.scale_x_left, CFG.scale_x_right, CFG.scale_n);
   const colWhite = new util.Color(CFG.text_color);
 
   for (let i = 0; i < CFG.scale_n; i++) {
     scale_circles.push(new visual.Polygon({
-      win,
-      edges:     64,
-      radius:    CFG.circle_radius,
-      lineColor: colWhite,
-      lineWidth: 4,
-      fillColor: undefined,
-      pos:       [xs[i], CFG.scale_y],
-      units:     'height',
+      win, edges: 64, radius: CFG.circle_radius,
+      lineColor: colWhite, lineWidth: 4, fillColor: undefined,
+      pos: [xs[i], CFG.scale_y], units: 'height',
     }));
     scale_numbers.push(new visual.TextStim({
-      win,
-      text:      String(i + 1),
-      pos:       [xs[i], CFG.numbers_y],
-      height:    CFG.text_height_medium,
-      color:     colWhite,
-      font:      CFG.font,
-      bold:      CFG.text_bold,
-      alignText: 'center',
-      units:     'height',
+      win, text: String(i + 1),
+      pos: [xs[i], CFG.numbers_y],
+      height: CFG.text_height_medium,
+      color: colWhite, font: CFG.font, bold: CFG.text_bold,
+      alignText: 'center', units: 'height',
     }));
   }
 
-  // ── Likert endpoint labels (text swapped per question) ──
   scale_leftDesc = new visual.TextStim({
-    win,
-    text:        '',
-    pos:         [CFG.scale_x_left  - 2 * CFG.circle_radius, CFG.desc_y],
+    win, text: '',
+    pos:         [CFG.scale_x_left - 2 * CFG.circle_radius, CFG.desc_y],
     height:      CFG.text_height_small,
-    color:       colWhite,
-    font:        CFG.font,
-    bold:        CFG.text_bold,
-    alignText:   'left',
-    anchorHoriz: 'left',
-    units:       'height',
-    wrapWidth:   0.4,
+    color:       colWhite, font: CFG.font, bold: CFG.text_bold,
+    alignText:   'left', anchorHoriz: 'left',
+    units:       'height', wrapWidth: 0.4,
   });
   scale_rightDesc = new visual.TextStim({
-    win,
-    text:        '',
+    win, text: '',
     pos:         [CFG.scale_x_right + 2 * CFG.circle_radius, CFG.desc_y],
     height:      CFG.text_height_small,
-    color:       colWhite,
-    font:        CFG.font,
-    bold:        CFG.text_bold,
-    alignText:   'right',
-    anchorHoriz: 'right',
-    units:       'height',
-    wrapWidth:   0.4,
+    color:       colWhite, font: CFG.font, bold: CFG.text_bold,
+    alignText:   'right', anchorHoriz: 'right',
+    units:       'height', wrapWidth: 0.4,
   });
 
-  // ── keyboard for Likert scale (arrow keys + return) ──
+  // waitForStart:true – we call start() via callOnFlip each question.
   scaleKb = new core.Keyboard({ psychoJS, clock: new util.Clock(), waitForStart: true });
 
   // ── parse expert_labels.csv ──────────────────
-  // The file has NO header row: col 0 = product name (ENG), col 1 = label text.
-  // TrialHandler will assign generic column names (col0, col1 …) when there is
-  // no header, so we fetch the raw text and parse it ourselves.
+  // No header row: col 0 = product_ENG, col 1 = expert label.
+  // Fetched as raw text to avoid TrialHandler's header assumption.
   try {
     const rawExpert = await (await fetch('expert_labels.csv')).text();
     rawExpert.trim().split('\n').forEach(line => {
       const parts = line.split(',');
       if (parts.length >= 2) {
-        const product = normStr(parts[0]);
-        const label   = parts.slice(1).join(',').trim();  // handle commas in label
-        expertMap[product] = label;
+        expertMap[normStr(parts[0])] = parts.slice(1).join(',').trim();
       }
     });
   } catch (e) {
-    console.warn('Could not parse expert_labels.csv via fetch; trying TrialHandler.', e);
-    // Fallback: TrialHandler (needs header row)
-    const _expertHandler = new TrialHandler({
-      psychoJS, nReps: 1,
-      method: TrialHandler.Method.SEQUENTIAL,
-      trialList: 'expert_labels.csv',
-      name: '_expertLoader',
-    });
-    for (const row of _expertHandler) {
-      // Try both possible column name conventions
-      const product = normStr(row.product || row.product_ENG || '');
-      const label   = String(row.expert_label || row.expert || '').trim();
-      if (product) expertMap[product] = label;
-    }
+    console.warn('expert_labels.csv fetch failed:', e);
   }
 
-  // ── parse product_list.csv via TrialHandler ──
+  // ── parse product_list.csv ───────────────────
+  // FIX: TrialHandler's for-of only yields one iteration in PsychoJS because
+  // the handler object itself is the iterator and its done flag trips after
+  // one next() call. Use .trialList directly – it is a plain JS array of
+  // row objects populated synchronously when the CSV is already in cache.
   const _productHandler = new TrialHandler({
     psychoJS, nReps: 1,
     method: TrialHandler.Method.SEQUENTIAL,
     trialList: 'product_list.csv',
     name: '_productLoader',
   });
-  const productRows = [];
-  for (const row of _productHandler) productRows.push(row);
+  const productRows = _productHandler.trialList;
 
-  const reqCols    = ['product_ENG', 'product_KOR', 'genre', 'classification', 'price_range'];
+  if (!productRows || productRows.length === 0) {
+    throw new Error('product_list.csv loaded 0 rows – check the file is in the project root.');
+  }
+
+  const reqCols     = ['product_ENG', 'product_KOR', 'genre', 'classification', 'price_range'];
   const missingCols = reqCols.filter(c => !(c in productRows[0]));
   if (missingCols.length > 0) throw new Error(`product_list.csv missing columns: ${missingCols}`);
 
@@ -565,36 +498,26 @@ async function experimentInit() {
     .map(r => r.product_ENG);
   if (missingExperts.length > 0) console.warn('No expert label for:', missingExperts);
 
-  // ── constrained shuffle of trials ───────────
+  // ── trial shuffle + assignments ──────────────
   trialRows = constrainedShuffle(
     productRows,
     r => `${r.genre}|${r.classification}|${r.price_range}`,
     CFG.max_run,
   );
-
   const nTrials = trialRows.length;
 
-  // ── info type assignment ─────────────────────
   const infoTypes = Object.keys(INFO_CODE_MAP);
   infoAssignment = CFG.debug
     ? Array(nTrials).fill(CFG.debug_info_type)
     : assignInfoTypesBalanced(trialRows, infoTypes, CFG.max_run);
 
-  // ── question order pools ─────────────────────
   qOrdersGPT   = buildBalancedQuestionOrders(permutations(GPT_QUESTIONS),   nTrials, CFG.question_order_max_run);
   qOrdersOther = buildBalancedQuestionOrders(permutations(OTHER_QUESTIONS), nTrials, CFG.question_order_max_run);
 
-  gptCounter   = 0;
-  otherCounter = 0;
-  trialIndex   = 0;
+  gptCounter = 0; otherCounter = 0; trialIndex = 0;
 
-  // ── PRE-FETCH trial 0 images ─────────────────
-  // Kick off the first trial's image download now so it lands before the
-  // intro fixation (3 s) finishes.  All subsequent pre-fetches happen at
-  // the end of each trial (see trialRoutineEnd).
-  if (nTrials > 0) {
-    await prefetchTrialImages(0);
-  }
+  // Pre-fetch trial 0's images now; ready before intro fixation ends.
+  if (nTrials > 0) await prefetchTrialImages(0);
 
   return Scheduler.Event.NEXT;
 }
@@ -604,23 +527,17 @@ async function experimentInit() {
 //  LAZY-LOAD HELPER
 // ─────────────────────────────────────────────
 
-// Tracks which trial indices have already been fetched so we never
-// request the same resource twice.
 const _fetchedTrials = new Set();
 
 async function prefetchTrialImages(tIdx) {
   if (tIdx >= trialRows.length || _fetchedTrials.has(tIdx)) return;
   _fetchedTrials.add(tIdx);
-
-  const resources = trialResources(trialRows[tIdx], infoAssignment[tIdx]);
   try {
-    // prepareResources() is the public PsychoJS API for adding resources
-    // after psychoJS.start().  It returns a promise that resolves when
-    // all requested files have been downloaded and registered with the
-    // server manager's resource cache.
-    await psychoJS.serverManager.prepareResources(resources);
+    await psychoJS.serverManager.prepareResources(
+      trialResources(trialRows[tIdx], infoAssignment[tIdx])
+    );
   } catch (e) {
-    console.warn(`prefetchTrialImages(${tIdx}): fetch failed – images may load late.`, e);
+    console.warn(`prefetchTrialImages(${tIdx}) failed:`, e);
   }
 }
 
@@ -637,13 +554,14 @@ function introRoutineBegin() {
   return async function () {
     t = 0;
     introClock.reset();
-    continueRoutine    = true;
-    introKey.keys      = undefined;
-    introKey.rt        = undefined;
-    introKey._allKeys  = [];
-    introComponents    = [introStim, introKey];
+    continueRoutine   = true;
+    introKey.keys     = undefined;
+    introKey.rt       = undefined;
+    introKey._allKeys = [];
+    introComponents   = [introStim, introKey];
     for (const c of introComponents) if ('status' in c) c.status = PsychoJS.Status.NOT_STARTED;
-    psychoJS.experiment.addData('intro.started', globalClock.getTime());
+    // NOTE: No addData calls here. Any addData before the first trial's
+    // nextEntry() would write into trial 1's CSV row, corrupting the output.
     return Scheduler.Event.NEXT;
   };
 }
@@ -670,9 +588,8 @@ function introRoutineEachFrame() {
       const theseKeys = introKey.getKeys({ keyList: ['space', 'return', 'escape'], waitRelease: false });
       introKey._allKeys = introKey._allKeys.concat(theseKeys);
       if (introKey._allKeys.length > 0) {
-        introKey.keys = introKey._allKeys[introKey._allKeys.length - 1].name;
-        introKey.rt   = introKey._allKeys[introKey._allKeys.length - 1].rt;
-        if (introKey.keys === 'escape') return quitPsychoJS('Escape pressed', false);
+        const last = introKey._allKeys[introKey._allKeys.length - 1];
+        if (last.name === 'escape') return quitPsychoJS('Escape pressed', false);
         continueRoutine = false;
       }
     }
@@ -691,7 +608,6 @@ function introRoutineEnd() {
     for (const c of introComponents)
       if (typeof c.setAutoDraw === 'function') c.setAutoDraw(false);
     introKey.stop();
-    psychoJS.experiment.addData('intro.stopped', globalClock.getTime());
     routineTimer.reset();
     return Scheduler.Event.NEXT;
   };
@@ -699,7 +615,7 @@ function introRoutineEnd() {
 
 
 // ─────────────────────────────────────────────
-//  8. INITIAL 3-SECOND FIXATION  (mirrors Python show_fixation(mindur=3, maxdur=3))
+//  8. INITIAL 3-SECOND FIXATION
 // ─────────────────────────────────────────────
 
 let introFixComponents;
@@ -732,13 +648,8 @@ function introFixRoutineEachFrame() {
         psychoJS.eventManager.getKeys({ keyList: ['escape'] }).length > 0)
       return quitPsychoJS('Escape pressed', false);
 
-    continueRoutine = false;
-    for (const c of introFixComponents)
-      if ('status' in c && c.status !== PsychoJS.Status.FINISHED) { continueRoutine = true; break; }
-
     if (continueRoutine && routineTimer.getTime() > 0) return Scheduler.Event.FLIP_REPEAT;
 
-    // hide fixation; the scheduler will move to the trial loop
     fixStim.setAutoDraw(false);
     fixStim.status = PsychoJS.Status.FINISHED;
     routineTimer.reset();
@@ -772,28 +683,20 @@ function trialsLoopBegin(loopScheduler) {
 }
 
 function trialsLoopEnd() {
-  return async function () {
-    return Scheduler.Event.NEXT;
-  };
+  return async function () { return Scheduler.Event.NEXT; };
 }
 
 
 // ─────────────────────────────────────────────
 //  10. PER-TRIAL ROUTINE
 //
-//  Phase sequence (mirrors Python main() trial loop):
-//    fix0        – jittered fixation before product
-//    product     – product image (CFG.product_dur)
-//    fix1        – jittered fixation before info
-//    info        – info image + label (CFG.info_dur)
-//    fix2        – jittered fixation before question block
-//    question_init / question / interQ_fix  (repeated per question in order)
-//    done        – advance to next trial
+//  Phases: fix0 → product → fix1 → info → fix2
+//          → [question_init → question → interQ_fix] × N
+//          → done
 // ─────────────────────────────────────────────
 
-// Shared state for one trial (set in trialRoutineBegin, read in EachFrame)
 let _trialPhase;
-let _phaseStartT;      // absolute time (from _trialClock) when current phase started
+let _phaseStartT;
 let _phaseDuration;
 let _trialClock;
 let _currentTrial;
@@ -801,15 +704,15 @@ let _currentInfoType;
 let _currentLabelText;
 let _currentQOrder;
 let _qIdx;
-let _qSelectedCircle;  // 0-based; null = nothing selected yet
+let _qSelectedCircle;
 let _qResponseGiven;
 let _qStartT;
 let _interQFixDuration;
-let _trialResults;     // { credEX:{score,rt}, … }
+let _trialResults;
+let _kbReady;   // flipped to true inside the callOnFlip that starts scaleKb
 
-// Pre-built Color objects (avoid per-frame allocation)
 const _colRed   = new util.Color('red');
-const _colClear = undefined;   // undefined = transparent fill (outline only)
+const _colClear = undefined;
 
 
 function trialRoutineBegin(tIdx) {
@@ -820,34 +723,22 @@ function trialRoutineBegin(tIdx) {
     _trialClock      = new util.Clock();
     _trialResults    = {};
 
-    // ── endorser label ─────────────────────────
     const peerName    = (_currentInfoType === 'peer')
-      ? peerNames[Math.floor(Math.random() * peerNames.length)]
-      : null;
+      ? peerNames[Math.floor(Math.random() * peerNames.length)] : null;
     const expertLabel = (_currentInfoType === 'expert')
-      ? (expertMap[normStr(_currentTrial.product_ENG)] || null)
-      : null;
+      ? (expertMap[normStr(_currentTrial.product_ENG)] || null) : null;
     _currentLabelText = resolveLabel(_currentInfoType, peerName, expertLabel);
 
-    // ── question order ──────────────────────────
     if (_currentInfoType === 'gpt') {
-      _currentQOrder = [...qOrdersGPT[gptCounter % qOrdersGPT.length]];
-      gptCounter++;
+      _currentQOrder = [...qOrdersGPT[gptCounter % qOrdersGPT.length]]; gptCounter++;
     } else {
-      _currentQOrder = [...qOrdersOther[otherCounter % qOrdersOther.length]];
-      otherCounter++;
+      _currentQOrder = [...qOrdersOther[otherCounter % qOrdersOther.length]]; otherCounter++;
     }
     _qIdx = 0;
 
-    // ── swap images on the reusable stims ───────
-    // Resources for this trial were pre-fetched in the previous trialRoutineEnd
-    // (or in experimentInit for trial 0), so setImage() should find them cached.
     productStim.setImage(`stim/01_product/${_currentTrial.product_ENG}.png`);
-    infoStim.setImage(
-      `stim/02_information/${_currentTrial.product_ENG}_${INFO_CODE_MAP[_currentInfoType]}.png`
-    );
+    infoStim.setImage(`stim/02_information/${_currentTrial.product_ENG}_${INFO_CODE_MAP[_currentInfoType]}.png`);
 
-    // ── log trial metadata ───────────────────────
     psychoJS.experiment.addData('TrialNumber',    trialIndex);
     psychoJS.experiment.addData('product_ENG',    _currentTrial.product_ENG);
     psychoJS.experiment.addData('product_KOR',    _currentTrial.product_KOR);
@@ -858,20 +749,14 @@ function trialRoutineBegin(tIdx) {
     psychoJS.experiment.addData('Q_Order',        _currentQOrder.join('-'));
     psychoJS.experiment.addData('LabelText',      _currentLabelText || '');
 
-    // ── ensure everything is hidden ──────────────
-    fixStim.setAutoDraw(false);
-    productStim.setAutoDraw(false);
-    infoStim.setAutoDraw(false);
-    labelStim.setAutoDraw(false);
-    questionStim.setAutoDraw(false);
+    [fixStim, productStim, infoStim, labelStim, questionStim].forEach(s => s.setAutoDraw(false));
     scale_circles.forEach(c => c.setAutoDraw(false));
     scale_numbers.forEach(n => n.setAutoDraw(false));
     scale_leftDesc.setAutoDraw(false);
     scale_rightDesc.setAutoDraw(false);
 
-    // ── start with jittered fixation ─────────────
     _phaseDuration = CFG.fix_min + Math.random() * (CFG.fix_max - CFG.fix_min);
-    _phaseStartT   = 0;   // relative to _trialClock (just reset above)
+    _phaseStartT   = 0;
     _trialPhase    = 'fix0';
 
     return Scheduler.Event.NEXT;
@@ -883,61 +768,45 @@ function trialRoutineEachFrame(tIdx) {
   return async function () {
     t = _trialClock.getTime();
 
-    // Global escape check
     if (psychoJS.experiment.experimentEnded ||
         psychoJS.eventManager.getKeys({ keyList: ['escape'] }).length > 0)
       return quitPsychoJS('Escape pressed', false);
 
-    // ════════════════════════════════════════════
-    //  STATE MACHINE
-    // ════════════════════════════════════════════
-
-    // ── fix0: jittered fixation before product ───────────────────────────────
+    // ── fix0 ─────────────────────────────────────────────────────────────────
     if (_trialPhase === 'fix0') {
       if (!fixStim.autoDraw) fixStim.setAutoDraw(true);
-
       if (t >= _phaseStartT + _phaseDuration) {
         fixStim.setAutoDraw(false);
         psychoJS.experiment.addData('fix0.started', _phaseStartT);
         psychoJS.experiment.addData('fix0.stopped', t);
-
-        _phaseStartT   = t;
-        _phaseDuration = CFG.product_dur;
-        _trialPhase    = 'product';
+        _phaseStartT = t; _phaseDuration = CFG.product_dur; _trialPhase = 'product';
         productStim.setAutoDraw(true);
         psychoJS.experiment.addData('product.started', _phaseStartT);
       }
       return Scheduler.Event.FLIP_REPEAT;
     }
 
-    // ── product ──────────────────────────────────────────────────────────────
+    // ── product ───────────────────────────────────────────────────────────────
     if (_trialPhase === 'product') {
       if (t >= _phaseStartT + _phaseDuration) {
         productStim.setAutoDraw(false);
         psychoJS.experiment.addData('product.stopped', t);
-
+        _phaseStartT = t;
         _phaseDuration = CFG.fix_min + Math.random() * (CFG.fix_max - CFG.fix_min);
-        _phaseStartT   = t;
-        _trialPhase    = 'fix1';
+        _trialPhase = 'fix1';
         fixStim.setAutoDraw(true);
         psychoJS.experiment.addData('fix1.started', _phaseStartT);
       }
       return Scheduler.Event.FLIP_REPEAT;
     }
 
-    // ── fix1: fixation between product and info ───────────────────────────────
+    // ── fix1 ──────────────────────────────────────────────────────────────────
     if (_trialPhase === 'fix1') {
       if (t >= _phaseStartT + _phaseDuration) {
         fixStim.setAutoDraw(false);
         psychoJS.experiment.addData('fix1.stopped', t);
-
-        _phaseStartT   = t;
-        _phaseDuration = CFG.info_dur;
-        _trialPhase    = 'info';
-        if (_currentLabelText) {
-          labelStim.setText(_currentLabelText);
-          labelStim.setAutoDraw(true);
-        }
+        _phaseStartT = t; _phaseDuration = CFG.info_dur; _trialPhase = 'info';
+        if (_currentLabelText) { labelStim.setText(_currentLabelText); labelStim.setAutoDraw(true); }
         infoStim.setAutoDraw(true);
         psychoJS.experiment.addData('info.started', _phaseStartT);
         psychoJS.experiment.addData('info.fname',
@@ -946,23 +815,21 @@ function trialRoutineEachFrame(tIdx) {
       return Scheduler.Event.FLIP_REPEAT;
     }
 
-    // ── info ─────────────────────────────────────────────────────────────────
+    // ── info ──────────────────────────────────────────────────────────────────
     if (_trialPhase === 'info') {
       if (t >= _phaseStartT + _phaseDuration) {
-        infoStim.setAutoDraw(false);
-        labelStim.setAutoDraw(false);
+        infoStim.setAutoDraw(false); labelStim.setAutoDraw(false);
         psychoJS.experiment.addData('info.stopped', t);
-
+        _phaseStartT = t;
         _phaseDuration = CFG.fix_min + Math.random() * (CFG.fix_max - CFG.fix_min);
-        _phaseStartT   = t;
-        _trialPhase    = 'fix2';
+        _trialPhase = 'fix2';
         fixStim.setAutoDraw(true);
         psychoJS.experiment.addData('fix2.started', _phaseStartT);
       }
       return Scheduler.Event.FLIP_REPEAT;
     }
 
-    // ── fix2: fixation before question block ─────────────────────────────────
+    // ── fix2 ──────────────────────────────────────────────────────────────────
     if (_trialPhase === 'fix2') {
       if (t >= _phaseStartT + _phaseDuration) {
         fixStim.setAutoDraw(false);
@@ -972,12 +839,9 @@ function trialRoutineEachFrame(tIdx) {
       return Scheduler.Event.FLIP_REPEAT;
     }
 
-    // ── question_init: configure the next question ────────────────────────────
+    // ── question_init ─────────────────────────────────────────────────────────
     if (_trialPhase === 'question_init') {
-      if (_qIdx >= _currentQOrder.length) {
-        _trialPhase = 'done';
-        return Scheduler.Event.NEXT;
-      }
+      if (_qIdx >= _currentQOrder.length) { _trialPhase = 'done'; return Scheduler.Event.NEXT; }
 
       const qKey = _currentQOrder[_qIdx];
       const qDef = QUESTION_DEFS[qKey];
@@ -985,35 +849,30 @@ function trialRoutineEachFrame(tIdx) {
       questionStim.setImage(qDef.img);
       scale_leftDesc.setText(qDef.left);
       scale_rightDesc.setText(qDef.right);
-
-      if (_currentLabelText) {
-        labelStim.setText(_currentLabelText);
-        labelStim.setAutoDraw(true);
-      }
-
-      // Reset circles to unfilled
-      scale_circles.forEach(c => c.setFillColor(_colClear));
-
-      // Show scale components
-      questionStim.setAutoDraw(true);
-      scale_circles.forEach(c => c.setAutoDraw(true));
+      if (_currentLabelText) { labelStim.setText(_currentLabelText); labelStim.setAutoDraw(true); }
+      scale_circles.forEach(c => { c.setFillColor(_colClear); c.setAutoDraw(true); });
       scale_numbers.forEach(n => n.setAutoDraw(true));
       scale_leftDesc.setAutoDraw(true);
       scale_rightDesc.setAutoDraw(true);
+      questionStim.setAutoDraw(true);
 
-      // Reset response state
       _qSelectedCircle = null;
       _qResponseGiven  = false;
+      _kbReady         = false;
 
-      // Start keyboard fresh for this question
-      scaleKb.keys     = undefined;
-      scaleKb.rt       = undefined;
-      scaleKb._allKeys = [];
+      // FIX: status must only be set to STARTED inside the flip callback so
+      // that getKeys() is never called before start() + clearEvents() fire.
+      // Setting status to NOT_STARTED first prevents getKeys() in the question
+      // phase from running until the callback fires on the very next flip.
       scaleKb.status   = PsychoJS.Status.NOT_STARTED;
-      psychoJS.window.callOnFlip(() => { scaleKb.clock.reset(); });
-      psychoJS.window.callOnFlip(() => { scaleKb.start(); });
-      psychoJS.window.callOnFlip(() => { scaleKb.clearEvents(); });
-      scaleKb.status   = PsychoJS.Status.STARTED;
+      scaleKb._allKeys = [];
+      psychoJS.window.callOnFlip(() => {
+        scaleKb.clock.reset();
+        scaleKb.start();
+        scaleKb.clearEvents();
+        scaleKb.status = PsychoJS.Status.STARTED;
+        _kbReady = true;
+      });
 
       _qStartT    = t;
       _trialPhase = 'question';
@@ -1021,60 +880,58 @@ function trialRoutineEachFrame(tIdx) {
       return Scheduler.Event.FLIP_REPEAT;
     }
 
-    // ── question: arrow navigation + RETURN to confirm ───────────────────────
+    // ── question ──────────────────────────────────────────────────────────────
     if (_trialPhase === 'question') {
-      const qKey      = _currentQOrder[_qIdx];
-      const n         = CFG.scale_n;
-      const theseKeys = scaleKb.getKeys({ keyList: ['left', 'right', 'return', 'escape'], waitRelease: false });
+      // Only poll once the flip callback has fired and the keyboard is truly running
+      if (_kbReady && scaleKb.status === PsychoJS.Status.STARTED) {
+        const qKey      = _currentQOrder[_qIdx];
+        const n         = CFG.scale_n;
+        // clear:true ensures each key event is consumed and cannot re-fire
+        const theseKeys = scaleKb.getKeys({
+          keyList: ['left', 'right', 'return', 'escape'],
+          waitRelease: false,
+          clear: true,
+        });
 
-      for (const k of theseKeys) {
-        if (k.name === 'escape') return quitPsychoJS('Escape pressed', false);
+        for (const k of theseKeys) {
+          if (k.name === 'escape') return quitPsychoJS('Escape pressed', false);
 
-        if (k.name === 'left') {
-          _qSelectedCircle = (_qSelectedCircle === null)
-            ? Math.floor(n / 2)
-            : Math.max(0, _qSelectedCircle - 1);
-        } else if (k.name === 'right') {
-          _qSelectedCircle = (_qSelectedCircle === null)
-            ? Math.floor(n / 2)
-            : Math.min(n - 1, _qSelectedCircle + 1);
-        } else if (k.name === 'return' && _qSelectedCircle !== null) {
-          const score = _qSelectedCircle + 1;  // 1-based to match Python
-          const rt    = k.rt;
-          _trialResults[qKey] = { score, rt };
-          psychoJS.experiment.addData(`${qKey}_val`,     score);
-          psychoJS.experiment.addData(`${qKey}_RT`,      rt);
-          psychoJS.experiment.addData(`${qKey}.stopped`, t);
-          _qResponseGiven = true;
+          if (k.name === 'left') {
+            _qSelectedCircle = (_qSelectedCircle === null)
+              ? Math.floor(n / 2) : Math.max(0, _qSelectedCircle - 1);
+          } else if (k.name === 'right') {
+            _qSelectedCircle = (_qSelectedCircle === null)
+              ? Math.floor(n / 2) : Math.min(n - 1, _qSelectedCircle + 1);
+          } else if (k.name === 'return' && _qSelectedCircle !== null) {
+            const score = _qSelectedCircle + 1;   // 1-based, matching Python
+            _trialResults[qKey] = { score, rt: k.rt };
+            psychoJS.experiment.addData(`${qKey}_val`,     score);
+            psychoJS.experiment.addData(`${qKey}_RT`,      k.rt);
+            psychoJS.experiment.addData(`${qKey}.stopped`, t);
+            _qResponseGiven = true;
+          }
         }
-      }
 
-      // Update circle fill: selected = red, others = transparent
-      scale_circles.forEach((c, i) =>
-        c.setFillColor(i === _qSelectedCircle ? _colRed : _colClear)
-      );
+        scale_circles.forEach((c, i) =>
+          c.setFillColor(i === _qSelectedCircle ? _colRed : _colClear)
+        );
 
-      if (_qResponseGiven) {
-        // Hide scale
-        questionStim.setAutoDraw(false);
-        labelStim.setAutoDraw(false);
-        scale_circles.forEach(c => c.setAutoDraw(false));
-        scale_numbers.forEach(n => n.setAutoDraw(false));
-        scale_leftDesc.setAutoDraw(false);
-        scale_rightDesc.setAutoDraw(false);
-        scaleKb.stop();
-
-        _qIdx++;
-        // Inter-question jittered fixation (mirrors Python inter-question fixation)
-        _interQFixDuration = CFG.fix_min + Math.random() * (CFG.fix_max - CFG.fix_min);
-        _phaseStartT       = t;
-        _trialPhase        = 'interQ_fix';
-        fixStim.setAutoDraw(true);
+        if (_qResponseGiven) {
+          questionStim.setAutoDraw(false); labelStim.setAutoDraw(false);
+          scale_circles.forEach(c => c.setAutoDraw(false));
+          scale_numbers.forEach(n => n.setAutoDraw(false));
+          scale_leftDesc.setAutoDraw(false); scale_rightDesc.setAutoDraw(false);
+          scaleKb.stop();
+          _qIdx++;
+          _interQFixDuration = CFG.fix_min + Math.random() * (CFG.fix_max - CFG.fix_min);
+          _phaseStartT = t; _trialPhase = 'interQ_fix';
+          fixStim.setAutoDraw(true);
+        }
       }
       return Scheduler.Event.FLIP_REPEAT;
     }
 
-    // ── interQ_fix: fixation between questions ────────────────────────────────
+    // ── interQ_fix ────────────────────────────────────────────────────────────
     if (_trialPhase === 'interQ_fix') {
       if (t >= _phaseStartT + _interQFixDuration) {
         fixStim.setAutoDraw(false);
@@ -1091,19 +948,15 @@ function trialRoutineEachFrame(tIdx) {
 
 function trialRoutineEnd(tIdx) {
   return async function () {
-    // Ensure all stims are hidden before inter-trial gap
-    fixStim.setAutoDraw(false);
-    productStim.setAutoDraw(false);
-    infoStim.setAutoDraw(false);
-    labelStim.setAutoDraw(false);
-    questionStim.setAutoDraw(false);
+    [fixStim, productStim, infoStim, labelStim, questionStim].forEach(s => s.setAutoDraw(false));
     scale_circles.forEach(c => c.setAutoDraw(false));
     scale_numbers.forEach(n => n.setAutoDraw(false));
     scale_leftDesc.setAutoDraw(false);
     scale_rightDesc.setAutoDraw(false);
 
-    // Pad any skipped questions with empty strings
-    ['credEX', 'credCON', 'credPEER', 'credGen', 'preference'].forEach(q => {
+    // Write empty string for every question not asked this trial so the
+    // CSV has consistent columns across all rows.
+    ALL_Q_KEYS.forEach(q => {
       if (!_trialResults[q]) {
         psychoJS.experiment.addData(`${q}_val`, '');
         psychoJS.experiment.addData(`${q}_RT`,  '');
@@ -1112,15 +965,9 @@ function trialRoutineEnd(tIdx) {
 
     psychoJS.experiment.nextEntry();
 
-    // ── PRE-FETCH NEXT TRIAL'S IMAGES ─────────────────────────────────────
-    // Kick off the download in the background.  The next trialRoutineBegin
-    // will call setImage() which succeeds as soon as prepareResources resolves.
+    // Pre-fetch the next trial's images (fire-and-forget)
     const nextIdx = tIdx + 1;
-    if (nextIdx < trialRows.length) {
-      // Fire-and-forget – we don't await so the experiment continues immediately.
-      // The download runs in parallel with the inter-trial gap on the Pavlovia CDN.
-      prefetchTrialImages(nextIdx);
-    }
+    if (nextIdx < trialRows.length) prefetchTrialImages(nextIdx);
 
     return Scheduler.Event.NEXT;
   };
