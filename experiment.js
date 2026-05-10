@@ -1,6 +1,6 @@
 /******************************************************************************
- * experiment.js - Endorsement Study
- * * Integration of behavioral_opt.py logic with samplesetup.js architecture.
+ * experiment.js - Endorsement Study (v2026.1.3)
+ * Aligning with behavioral_opt.py logic
  ******************************************************************************/
 
 import { core, data, util, visual } from './lib/psychojs-2026.1.3.js';
@@ -17,211 +17,137 @@ const CFG = {
   max_run: 2,
   question_order_max_run: 3,
   font: 'NanumGothic',
-  scale_n: 7,
-  circle_radius: 0.04, // norm units
-  circle_spacing: 0.22
+  text_color: 'white'
 };
 
-const INFO_LABEL_MAP = {
-  '01': 'expert',
-  '02': 'consensus',
-  '03': 'peer',
-  '04': 'gpt'
-};
-
-const QUESTION_DEFS = {
-  'credEX':  { label: 'Expert Credibility', img: 'stim/03_question/credibility_EX.png' },
-  'credCON': { label: 'Consensus Credibility', img: 'stim/03_question/credibility_CON.png' },
-  'credPEER':{ label: 'Peer Credibility', img: 'stim/03_question/credibility_PEER.png' },
-  'credGen': { label: 'General Credibility', img: 'stim/03_question/credibility_general.png' },
-  'preference': { label: 'Preference', img: 'stim/03_question/preference.png' }
-};
-
-// --- 2. EXPERIMENT SETUP ---
-let expName = 'EndorsementStudy';
-let expInfo = { 'participant': '', 'session': '001', 'age': '', 'gender': ['male', 'female', 'other'] };
-
+// --- 2. INITIALIZE PSYCHOJS ---
 const psychoJS = new PsychoJS({ debug: true });
+
+// Setup Window
 psychoJS.openWindow({
   fullscr: true,
   color: new util.Color('black'),
-  units: 'height',
+  units: 'norm',
   waitBlanking: true
 });
 
-psychoJS.schedule(psychoJS.gui.DlgFromDict({ dictionary: expInfo, title: expName }));
+// --- 3. STARTUP DIALOG (Participant ID + 4 Peer Names) ---
+let expInfo = {
+  'Participant ID': '',
+  'Friend 1': '',
+  'Friend 2': '',
+  'Friend 3': '',
+  'Friend 4': ''
+};
 
-const flowScheduler = new Scheduler(psychoJS);
-const dialogCancelScheduler = new Scheduler(psychoJS);
-psychoJS.scheduleCondition(() => (psychoJS.gui.dialogComponent.button === 'OK'), flowScheduler, dialogCancelScheduler);
+psychoJS.schedule(psychoJS.gui.DlgFromDict({
+  dictionary: expInfo,
+  title: 'Endorsement Study'
+}));
 
-// Define Flow
-flowScheduler.add(updateInfo);
-flowScheduler.add(experimentInit);
-// Intro Routine
-flowScheduler.add(introRoutineBegin());
-flowScheduler.add(introRoutineEachFrame());
-flowScheduler.add(introRoutineEnd());
-// Trials Loop
-const trialsLoopScheduler = new Scheduler(psychoJS);
-flowScheduler.add(trialsLoopBegin(trialsLoopScheduler));
-flowScheduler.add(trialsLoopScheduler);
-flowScheduler.add(trialsLoopEnd);
-// Finalize
-flowScheduler.add(quitPsychoJS, 'Experiment finished.', true);
-dialogCancelScheduler.add(quitPsychoJS, '', false);
-
-// --- 3. RESOURCES ---
-// Explicitly list essential files to avoid the "Init" hang
-const RESOURCES = [
-  { 'name': 'product_list.csv', 'path': 'product_list.csv' },
-  { 'name': 'expert_labels.csv', 'path': 'expert_labels.csv' },
-  { 'name': 'stim/00_fixation/fixation.png', 'path': 'stim/00_fixation/fixation.png' },
-  { 'name': 'stim/04_intro/intro.png', 'path': 'stim/04_intro/intro.png' },
-  { 'name': 'stim/03_question/credibility_EX.png', 'path': 'stim/03_question/credibility_EX.png' },
-  { 'name': 'stim/03_question/credibility_CON.png', 'path': 'stim/03_question/credibility_CON.png' },
-  { 'name': 'stim/03_question/credibility_PEER.png', 'path': 'stim/03_question/credibility_PEER.png' },
-  { 'name': 'stim/03_question/credibility_general.png', 'path': 'stim/03_question/credibility_general.png' },
-  { 'name': 'stim/03_question/preference.png', 'path': 'stim/03_question/preference.png' }
+// --- 4. GLOBAL COMPONENT VARIABLES ---
+let win, fixStim, productStim, infoStim, trialsLoop;
+let resources = [
+  { name: 'product_list.xlsx', path: 'product_list.xlsx' },
+  { name: 'stim/fixation.png', path: 'stim/fixation.png' }
+  // Add other required image paths here as in behavioral_opt.py
 ];
 
-psychoJS.start({ expName, expInfo, resources: RESOURCES });
+// --- 5. EXPERIMENT FLOW ---
+const flowScheduler = new Scheduler(psychoJS);
 
-// --- 4. GLOBAL VARIABLES & STIMULI ---
-let globalClock, routineTimer;
-let fixStim, productStim, infoStim, questionBg, likertCircles = [], likertTexts = [];
-let mouse, introImg;
+flowScheduler.add(updateResourcePaths); // Prep resource list
+flowScheduler.add(experimentInit);      // Create visuals
+flowScheduler.add(trialsLoopBegin);     // Setup randomization logic
+flowScheduler.add(trialsLoop);          // Run the loop
+flowScheduler.add(quitPsychoJS);        // Save and exit
 
-async function updateInfo() {
-  expInfo['date'] = util.MonotonicClock.getDateStr();
-  psychoJS.experiment.dataFileName = `data/${expInfo['participant']}_${expName}_${expInfo['date']}`;
+// Start the experiment
+psychoJS.start({
+  expName: 'Endorsement Study',
+  expInfo: expInfo,
+  resources: resources
+});
+
+// --- 6. INITIALIZATION FUNCTION ---
+function experimentInit() {
+  win = psychoJS.window;
+
+  fixStim = new visual.TextStim({
+    win: win,
+    text: '+',
+    font: 'Arial',
+    pos: [0, 0], height: 0.1, color: new util.Color(CFG.text_color)
+  });
+
+  productStim = new visual.ImageStim({
+    win: win,
+    image: undefined,
+    pos: [0, 0.2], size: [0.8, 0.8]
+  });
+
+  infoStim = new visual.TextStim({
+    win: win,
+    text: '',
+    font: CFG.font,
+    pos: [0, -0.4], height: 0.05, 
+    color: new util.Color(CFG.text_color),
+    wrapWidth: 1.5
+  });
+
   return Scheduler.Event.NEXT;
 }
 
-async function experimentInit() {
-  globalClock = new util.Clock();
-  routineTimer = new util.CountdownTimer();
-  mouse = new core.Mouse({ psychoJS });
+// --- 7. TRIAL LOGIC (Aligning with behavioral_opt.py) ---
+function trialsLoopBegin() {
+  // Load trials from the Excel file
+  const trialList = data.importConditions(psychoJS.serverManager.getResource('product_list.xlsx'));
+  
+  trialsLoop = new TrialHandler({
+    psychoJS: psychoJS,
+    nReps: 1, 
+    method: TrialHandler.Method.RANDOM,
+    extraInfo: expInfo, 
+    originPath: undefined,
+    trialList: trialList,
+    seed: undefined, 
+    name: 'trialsLoop'
+  });
 
-  introImg = new visual.ImageStim({ win: psychoJS.window, image: 'stim/04_intro/intro.png', units: 'height', size: [1.2, 0.9] });
-  fixStim = new visual.ImageStim({ win: psychoJS.window, image: 'stim/00_fixation/fixation.png', size: [0.1, 0.1] });
-  productStim = new visual.ImageStim({ win: psychoJS.window, size: [0.8, 0.6] });
-  infoStim = new visual.TextStim({ win: psychoJS.window, text: '', height: 0.04, wrapWidth: 0.8, color: 'white' });
-  questionBg = new visual.ImageStim({ win: psychoJS.window, size: [1.0, 0.8], pos: [0, 0.1] });
-
-  // Likert Scale (7-point)
-  for (let i = 0; i < CFG.scale_n; i++) {
-    let x = (i - (CFG.scale_n - 1) / 2) * CFG.circle_spacing;
-    likertCircles.push(new visual.Polygon({
-      win: psychoJS.window, edges: 32, radius: CFG.circle_radius,
-      pos: [x, -0.3], fillColor: 'white', lineColor: 'gray'
-    }));
-    likertTexts.push(new visual.TextStim({
-      win: psychoJS.window, text: (i + 1).toString(),
-      pos: [x, -0.3], height: 0.03, color: 'black'
-    }));
-  }
   return Scheduler.Event.NEXT;
 }
 
-// --- 5. DATA HANDLING & RANDOMIZATION (The behavioral_opt.py engine) ---
-function trialsLoopBegin(thisScheduler) {
+async function trialRoutineBegin(snapshot) {
   return async function() {
-    // 1. Load CSVs
-    const productRaw = psychoJS.serverManager.getResource('product_list.csv');
-    const expertRaw = psychoJS.serverManager.getResource('expert_labels.csv');
-    const productList = util.csvToArray(productRaw); // Array of objects
-    const expertMap = util.csvToArray(expertRaw).reduce((acc, row) => {
-      acc[row.product_ENG] = row.expert_label;
-      return acc;
-    }, {});
-
-    // 2. Behavioral Logic: Assign conditions and shuffle
-    // (Simplified version of balanced assignment)
-    let trials = productList.map((p, i) => {
-      let infoType = ['01','02','03','04'][i % 4]; // Round robin for balance
-      return { ...p, infoType };
-    });
-    util.shuffle(trials);
-
-    const trialsLoop = new TrialHandler({ psychoJS, trialList: trials, nReps: 1, method: TrialHandler.Method.SEQUENTIAL });
-    psychoJS.experiment.addLoop(trialsLoop);
-
-    for (const thisTrial of trialsLoop) {
-      thisScheduler.add(importConditions(trialsLoop));
-      thisScheduler.add(trialRoutineBegin(thisTrial, expertMap));
-      thisScheduler.add(trialRoutineEachFrame());
-      thisScheduler.add(trialRoutineEnd());
-    }
-    return Scheduler.Event.NEXT;
-  };
-}
-
-// --- 6. ROUTINES ---
-function introRoutineBegin() {
-  return async function() {
-    introImg.setAutoDraw(true);
-    mouse.getPressed(); // clear
-    return Scheduler.Event.NEXT;
-  };
-}
-
-function introRoutineEachFrame() {
-  return async function() {
-    if (mouse.getPressed()[0] === 1) return Scheduler.Event.NEXT;
-    return Scheduler.Event.FLIP_REPEAT;
-  };
-}
-
-function introRoutineEnd() {
-  return async function() {
-    introImg.setAutoDraw(false);
-    return Scheduler.Event.NEXT;
-  };
-}
-
-let currentTrialData;
-function trialRoutineBegin(trial, expertMap) {
-  return async function() {
-    currentTrialData = trial;
-    // Set Product image
-    productStim.setImage(trial.image_path);
-    // Set Endorsement text based on type
-    let text = "";
-    if (trial.infoType === '01') text = expertMap[trial.product_ENG] || "Expert recommendation...";
-    else if (trial.infoType === '02') text = "85% of users recommend this.";
-    else if (trial.infoType === '03') text = "Your friends liked this.";
-    else text = "AI suggests this product.";
-    infoStim.setText(text);
+    const trial = snapshot.getCurrentTrial();
     
-    routineTimer.set(CFG.product_dur + CFG.info_dur + 10.0); // plus buffer for Qs
+    // Set Product
+    productStim.setImage(trial.image_path);
+    
+    // Peer Endorsement Logic (InfoType 03)
+    // Mirrors behavioral_opt.py: Replace generic text with names from the dialog
+    let infoText = trial.infoText;
+    if (trial.infoType === '03') {
+      const friends = [expInfo['Friend 1'], expInfo['Friend 2'], expInfo['Friend 3'], expInfo['Friend 4']];
+      const selectedFriend = friends[Math.floor(Math.random() * friends.length)] || "친구";
+      infoText = `${selectedFriend}님이 이 제품을 추천합니다.`;
+    }
+    
+    infoStim.setText(infoText);
+    
     return Scheduler.Event.NEXT;
   };
 }
 
-// ... Additional routine logic continues here, managing flips for Product -> Info -> Questions
-// Data is saved using: psychoJS.experiment.addData('column_name', value);
-
-async function quitPsychoJS(message, isCompleted) {
-  psychoJS.window.close();
-  psychoJS.quit({ message, isCompleted });
-  return Scheduler.Event.NEXT;
-}
-
-function importConditions(currentLoop) {
-  return async function () {
-    psychoJS.importAttributes(currentLoop.getCurrentTrial());
-    return Scheduler.Event.NEXT;
-  };
-}
+// --- 8. FINISH & QUIT ---
 function trialsLoopEnd() {
   return async function () {
-    // This tells PsychoJS the loop is over
-    currentLoop.finished = true;
-    
-    // Optional: Add any logic here you want to run right after the trials finish
-    console.log("Trials loop has ended successfully.");
-
     return Scheduler.Event.NEXT;
   };
+}
+
+async function quitPsychoJS() {
+  psychoJS.window.close();
+  psychoJS.quit();
+  return Scheduler.Event.NEXT;
 }
