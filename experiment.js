@@ -681,6 +681,13 @@ function trialRoutineBegin(tIdx) {
     trialIndex       = tIdx + 1;
     _currentTrial    = trialRows[tIdx];
     _currentInfoType = infoAssignment[tIdx];
+
+    // Start loading NEXT trial immediately
+    const nextIdx = tIdx + 1;
+
+    if (nextIdx < trialRows.length) {
+      prefetchTrialImages(nextIdx);
+    }
     _trialClock      = new util.Clock();
     _trialResults    = {};
 
@@ -779,12 +786,6 @@ function trialRoutineEachFrame(tIdx) {
        }
 
        infoStim.setAutoDraw(true);
-
-       // PRELOAD NEXT TRIAL HERE
-       const nextIdx = tIdx + 1;
-       if (nextIdx < trialRows.length) {
-         prefetchTrialImages(nextIdx);
-       }
 
        psychoJS.experiment.addData('info.started', _phaseStartT);
 
