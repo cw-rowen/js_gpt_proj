@@ -1,10 +1,14 @@
 /**
- * experiment.js
- * Endorsement Study — PsychoJS / Pavlovia
+ * experiment.js  —  Endorsement Study (PsychoJS / Pavlovia)
  *
  * Mirrors behavioral_opt.py exactly.
- * Uses the Scheduler-based pattern (samplesetup.js) to fix the
- * [Init] Please wait… hang that the previous async/await version caused.
+ *
+ * Root-cause fix for [Init] Please wait… hang:
+ *   1. experimentInit() does ONLY visual component allocation (mirrors
+ *      samplesetup.js exactly — no CSV reads, no TrialHandler, no async ops).
+ *   2. CSV parsing + all randomization moved to trialsLoopBegin(), where
+ *      PsychoJS has already resolved every declared resource.
+ *   3. Only 9 static files in RESOURCES (not 320 trial images).
  */
 
 import { core, data, util, visual } from './lib/psychojs-2024.1.4.js';
@@ -13,27 +17,23 @@ const { TrialHandler } = data;
 const { Scheduler } = util;
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  1. CONFIGURATION  (mirrors behavioral_opt.py CFG dict)
+//  1. CONFIGURATION  (mirrors behavioral_opt.py CFG)
 // ─────────────────────────────────────────────────────────────────────────────
 const CFG = {
-  // timing
   product_dur  : 4.0,
   info_dur     : 9.0,
   fix_min      : 0.5,
   fix_max      : 1.5,
 
-  // randomization
   max_run                : 2,
   question_order_max_run : 3,
 
-  // text
   font               : 'NanumGothic',
   text_color         : 'white',
-  text_height_big    : 0.15,   // endorsement label  (norm units)
-  text_height_medium : 0.045,  // Likert numbers     (height units)
-  text_height_small  : 0.05,   // Likert endpoint    (height units)
+  text_height_big    : 0.15,
+  text_height_medium : 0.045,
+  text_height_small  : 0.05,
 
-  // scale — all scale elements use 'height' units, matching Python
   scale_n       : 7,
   circle_radius : 0.065,
   scale_y       : -0.15,
@@ -54,37 +54,28 @@ const INFO_CODE_MAP = {
   peer      : '03',
   gpt       : '04',
 };
-
 const INFO_LABEL_MAP = {
   consensus : '[소비자 의견 종합]',
   gpt       : '[ChatGPT]',
-  // expert resolved dynamically from expert_labels.csv
-  // peer   resolved dynamically from participant dialog
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  3. QUESTION DEFINITIONS  (mirrors behavioral_opt.py QUESTION_DEFS)
 // ─────────────────────────────────────────────────────────────────────────────
 const QUESTION_DEFS = {
-  credEX   : { bg: 'credibility_EX.png',      left: '전혀 전문적이지 않다', right: '매우 전문적이다' },
-  credCON  : { bg: 'credibility_CON.png',      left: '전혀 반영하지 않는다', right: '매우 반영한다'   },
-  credPEER : { bg: 'credibility_PEER.png',     left: '전혀 가깝지 않다',     right: '매우 가깝다'     },
-  credGen  : { bg: 'credibility_general.png',  left: '전혀 믿지 않음',       right: '매우 신뢰함'     },
+  credEX    : { bg: 'credibility_EX.png',      left: '전혀 전문적이지 않다', right: '매우 전문적이다' },
+  credCON   : { bg: 'credibility_CON.png',     left: '전혀 반영하지 않는다', right: '매우 반영한다'   },
+  credPEER  : { bg: 'credibility_PEER.png',    left: '전혀 가깝지 않다',     right: '매우 가깝다'     },
+  credGen   : { bg: 'credibility_general.png', left: '전혀 믿지 않음',       right: '매우 신뢰함'     },
   preference: { bg: 'preference.png',          left: '전혀 선호하지 않음',   right: '매우 선호함'     },
 };
-
-// GPT gets all 5 Qs; all other endorsers get 2  (mirrors behavioral_opt.py)
 const GPT_QUESTIONS   = ['credEX', 'credCON', 'credPEER', 'credGen', 'preference'];
 const OTHER_QUESTIONS = ['credGen', 'preference'];
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  4. RESOURCE MANIFEST
-//
-//  Only the small static assets are declared here (CSVs + fixation + intro +
-//  5 question PNGs = 9 files).  Trial images (64 products × 4 info codes =
-//  320 files) are NOT listed — that is what caused the [Init] hang.
-//  They are pre-fetched via the browser's native image cache (imgCache) after
-//  Init completes, so they are warm before each trial needs them.
+//  4. RESOURCES  — only 9 small static files
+//     Trial images (320) are NOT listed here; they warm via imgCache below.
+//     Listing them was the cause of the Init hang.
 // ─────────────────────────────────────────────────────────────────────────────
 const RESOURCES = [
   { name: 'product_list.csv',              path: 'product_list.csv'              },
@@ -96,14 +87,11 @@ const RESOURCES = [
     path: `stim/03_question/${q.bg}`,
   })),
 ];
-// Total: 2 + 2 + 5 = 9 resources — Init finishes immediately.
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  4b. BACKGROUND IMAGE CACHE
-//
-//  Pre-fetches all 320 trial images using native HTMLImageElement so the
-//  browser HTTP cache has them ready before each trial draws them.
-//  Zero PsychoJS involvement — no blocking, no Init overhead.
+//      Warms all 320 trial images via native HTMLImageElement (no PsychoJS).
+//      Called at the top of trialsLoopBegin so images load while intro plays.
 // ─────────────────────────────────────────────────────────────────────────────
 const PRODUCTS = [
   'airfryer','bath_bomb','body_lotion','body_mist','bread','cable_organizer','cake','canned_tuna',
@@ -118,7 +106,7 @@ const PRODUCTS = [
   'wax_burner','wax_seal_kit','weighted_blanket','wireless_keyboard',
 ];
 
-const imgCache = {};   // keyed by URL — keeps HTMLImageElement refs alive
+const imgCache = {};
 
 function warmImageCache() {
   const urls = [
@@ -136,34 +124,20 @@ function warmImageCache() {
   }
 }
 
-function waitForImage(url) {
-  const el = imgCache[url] || (() => {
-    const fresh = new Image();
-    fresh.src = url;
-    imgCache[url] = fresh;
-    return fresh;
-  })();
-  if (el.complete && el.naturalWidth > 0) return Promise.resolve();
-  return new Promise(resolve => { el.onload = resolve; el.onerror = resolve; });
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
-//  5. HELPERS  (mirrors behavioral_opt.py helpers section)
+//  5. HELPERS  (mirrors behavioral_opt.py helper functions)
 // ─────────────────────────────────────────────────────────────────────────────
 
-// mirrors behavioral_opt.py norm()
 function normStr(s) {
   return String(s).trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
-// mirrors behavioral_opt.py resolve_label()
 function resolveLabel(infoType, peerName, expertLabel) {
-  if (infoType === 'peer')   return peerName    ? `[${peerName}의 추천]` : null;
+  if (infoType === 'peer')   return peerName    ? `[${peerName}의 추천]`     : null;
   if (infoType === 'expert') return expertLabel || INFO_LABEL_MAP['expert'] || null;
   return INFO_LABEL_MAP[infoType] || null;
 }
 
-// Fisher-Yates in-place shuffle
 function shuffleArray(arr) {
   for (let i = arr.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -172,7 +146,6 @@ function shuffleArray(arr) {
   return arr;
 }
 
-// mirrors behavioral_opt.py is_valid_run()
 function isValidRun(seq, maxRun) {
   let run = 1;
   for (let i = 1; i < seq.length; i++) {
@@ -182,7 +155,6 @@ function isValidRun(seq, maxRun) {
   return true;
 }
 
-// mirrors behavioral_opt.py constrained_shuffle()
 function constrainedShuffle(rows, keyFn, maxRun = 2, maxTries = 20000) {
   rows = rows.slice();
   for (let attempt = 0; attempt < maxTries; attempt++) {
@@ -193,49 +165,41 @@ function constrainedShuffle(rows, keyFn, maxRun = 2, maxTries = 20000) {
   return rows;
 }
 
-// mirrors behavioral_opt.py assign_info_types_balanced()
 function assignInfoTypesBalanced(rows, infoTypes, maxRun = 2, maxTries = 5000) {
   const comboKey = r => `${r.genre}|${r.classification}|${r.price_range}`;
   for (let attempt = 0; attempt < maxTries; attempt++) {
-    const overall = {};
-    const perCombo = {};
+    const overall = {}; const perCombo = {};
     infoTypes.forEach(t => { overall[t] = 0; });
-    const assigned = [];
-    let ok = true;
+    const assigned = []; let ok = true;
     for (let i = 0; i < rows.length; i++) {
       const ck = comboKey(rows[i]);
       if (!perCombo[ck]) { perCombo[ck] = {}; infoTypes.forEach(t => { perCombo[ck][t] = 0; }); }
-      let candidates = infoTypes.slice();
-      if (assigned.length >= maxRun && assigned.slice(-maxRun).every(x => x === assigned[assigned.length - 1])) {
-        candidates = candidates.filter(t => t !== assigned[assigned.length - 1]);
-      }
-      if (candidates.length === 0) { ok = false; break; }
-      const scored = candidates.map(t => ({ t, s: [perCombo[ck][t], overall[t], Math.random()] }));
+      let cands = infoTypes.slice();
+      if (assigned.length >= maxRun &&
+          assigned.slice(-maxRun).every(x => x === assigned[assigned.length - 1]))
+        cands = cands.filter(t => t !== assigned[assigned.length - 1]);
+      if (!cands.length) { ok = false; break; }
+      const scored = cands.map(t => ({ t, s: [perCombo[ck][t], overall[t], Math.random()] }));
       scored.sort((a, b) => { for (let k = 0; k < 3; k++) if (a.s[k] !== b.s[k]) return a.s[k] - b.s[k]; return 0; });
       const chosen = scored[0].t;
-      assigned.push(chosen);
-      overall[chosen]++;
-      perCombo[ck][chosen]++;
+      assigned.push(chosen); overall[chosen]++; perCombo[ck][chosen]++;
     }
     if (ok) return assigned;
   }
   throw new Error('assignInfoTypesBalanced: could not satisfy constraints');
 }
 
-// mirrors behavioral_opt.py is_valid_position_runs()
 function isValidPositionRuns(history, candidate, maxRun = 3) {
   for (let pos = 0; pos < candidate.length; pos++) {
     let run = 1;
     for (let h = history.length - 1; h >= 0; h--) {
-      if (history[h][pos] === candidate[pos]) run++;
-      else break;
+      if (history[h][pos] === candidate[pos]) run++; else break;
     }
     if (run > maxRun) return false;
   }
   return true;
 }
 
-// All permutations of an array (mirrors itertools.permutations)
 function permutations(arr) {
   if (arr.length <= 1) return [arr.slice()];
   const result = [];
@@ -246,17 +210,15 @@ function permutations(arr) {
   return result;
 }
 
-// mirrors behavioral_opt.py build_balanced_question_orders()
 function buildBalancedQuestionOrders(allOrders, nTrials, maxRun = 3, maxTries = 5000) {
   for (let attempt = 0; attempt < maxTries; attempt++) {
     const pool = [];
     while (pool.length < nTrials) { const c = allOrders.slice(); shuffleArray(c); pool.push(...c); }
     pool.length = nTrials;
-    const arranged = [];
-    const remaining = pool.slice();
+    const arranged = []; const remaining = pool.slice();
     while (remaining.length > 0) {
       const valid = remaining.filter(o => isValidPositionRuns(arranged, o, maxRun));
-      if (valid.length === 0) break;
+      if (!valid.length) break;
       const chosen = valid[Math.floor(Math.random() * valid.length)];
       arranged.push(chosen);
       remaining.splice(remaining.indexOf(chosen), 1);
@@ -269,21 +231,19 @@ function buildBalancedQuestionOrders(allOrders, nTrials, maxRun = 3, maxTries = 
 // ─────────────────────────────────────────────────────────────────────────────
 //  6. RESULTS / EVENT LOG  (mirrors behavioral_opt.py results_rows / event_log)
 // ─────────────────────────────────────────────────────────────────────────────
-const resultsRows = [];
-const eventLog    = [];
+const resultsRows  = [];
+const eventLog     = [];
 let   eventCounter = 0;
 
-// mirrors behavioral_opt.py log_event()
-function logEvent(ID, trialIndex, eventType, stimName, startT, endT, rt = null) {
+function logEvent(ID, trialIdx, eventType, stimName, startT, endT, rt = null) {
   eventCounter++;
   const duration = eventType === 'question' ? '' : (startT != null && endT != null ? endT - startT : '');
   const rtVal    = eventType === 'question' ? rt : '';
-  eventLog.push({ ID, Trial: trialIndex, EventN: eventCounter,
+  eventLog.push({ ID, Trial: trialIdx, EventN: eventCounter,
     EventType: eventType, StimName: stimName,
     StartTime: startT, EndTime: endT, Duration: duration, RT: rtVal });
 }
 
-// mirrors behavioral_opt.py flush_csvs() — triggers browser download after every trial
 function downloadCSV(filename, rows) {
   if (!rows.length) return;
   const header  = Object.keys(rows[0]).join(',');
@@ -291,10 +251,8 @@ function downloadCSV(filename, rows) {
     Object.values(r).map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')
   )].join('\n');
   const blob = new Blob(['\uFEFF' + content], { type: 'text/csv;charset=utf-8;' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = filename;
-  a.click();
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = filename; a.click();
 }
 
 function flushCSVs(ID) {
@@ -303,21 +261,10 @@ function flushCSVs(ID) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  7. PSYCHOJS INITIALIZATION  (Scheduler pattern — mirrors samplesetup.js)
+//  7. PSYCHOJS INIT  (Scheduler boot — mirrors samplesetup.js exactly)
 // ─────────────────────────────────────────────────────────────────────────────
 const psychoJS = new PsychoJS({ debug: false });
 
-// Step 1 — open window (must happen before scheduling)
-psychoJS.openWindow({
-  fullscr         : true,
-  color           : new util.Color('black'),
-  units           : 'norm',
-  waitBlanking    : true,
-  backgroundImage : '',
-  backgroundFit   : 'none',
-});
-
-// Step 2 — participant dialog  (mirrors behavioral_opt.py gui.DlgFromDict)
 const expName = 'EndorsementStudy';
 const expInfo = {
   'Participant ID': '',
@@ -327,27 +274,33 @@ const expInfo = {
   'Peer 4': 'Peer4',
 };
 
+psychoJS.openWindow({
+  fullscr: true,
+  color: new util.Color('black'),
+  units: 'norm',
+  waitBlanking: true,
+  backgroundImage: '',
+  backgroundFit: 'none',
+});
+
 psychoJS.schedule(psychoJS.gui.DlgFromDict({ dictionary: expInfo, title: expName }));
 
-// Step 3 — two top-level schedulers (OK / Cancel), exactly as in samplesetup.js
 const flowScheduler         = new Scheduler(psychoJS);
 const dialogCancelScheduler = new Scheduler(psychoJS);
-
 psychoJS.scheduleCondition(
   () => psychoJS.gui.dialogComponent.button === 'OK',
   flowScheduler,
   dialogCancelScheduler
 );
 
-// flowScheduler — runs when participant clicks OK
 flowScheduler.add(updateInfo);
 flowScheduler.add(experimentInit);
 flowScheduler.add(introRoutineBegin());
 flowScheduler.add(introRoutineEachFrame());
 flowScheduler.add(introRoutineEnd());
-flowScheduler.add(openingFixationRoutineBegin());
-flowScheduler.add(openingFixationRoutineEachFrame());
-flowScheduler.add(openingFixationRoutineEnd());
+flowScheduler.add(openingFixationBegin());
+flowScheduler.add(openingFixationEachFrame());
+flowScheduler.add(openingFixationEnd());
 
 const trialsLoopScheduler = new Scheduler(psychoJS);
 flowScheduler.add(trialsLoopBegin(trialsLoopScheduler));
@@ -355,72 +308,45 @@ flowScheduler.add(trialsLoopScheduler);
 flowScheduler.add(trialsLoopEnd);
 flowScheduler.add(quitPsychoJS, 'Experiment complete', true);
 
-// dialogCancelScheduler — runs when participant clicks Cancel
 dialogCancelScheduler.add(quitPsychoJS, 'Cancelled', false);
 
-// Step 4 — start PsychoJS with only the 9 static resources (fixes the hang)
 psychoJS.start({ expName, expInfo, resources: RESOURCES });
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  8. SHARED STATE  (populated in experimentInit, used across routines)
+//  8. SHARED STATE  (module-level, populated in the two init functions)
 // ─────────────────────────────────────────────────────────────────────────────
-let globalClock;
-let routineTimer;
+let globalClock, routineTimer;
 
-// Reusable stims (allocated once in experimentInit, reused every routine)
-let sharedImageStim;    // for product / info / fixation / intro images
-let labelStim;          // endorsement source label
-let scales;             // { credEX, credCON, credPEER, credGen, preference }
+// Reusable visual stims (allocated once in experimentInit)
+let sharedImageStim, labelStim, scales;
 
-// Trial data (built in experimentInit)
-let trialRows     = [];
-let infoAssignment = [];
-let balancedOrdersGpt;
-let balancedOrdersOther;
+// Trial data (populated in trialsLoopBegin — after resources are loaded)
+let trialRows       = [];
+let infoAssignment  = [];
+let balancedOrdersGpt, balancedOrdersOther;
 let gptCounter   = 0;
 let otherCounter = 0;
-let expertLabelMap = {};
-let peerNames = [];
-let participantID = '';
+let expertLabelMap  = {};
+let peerNames       = [];
+let participantID   = '';
 
-// Per-routine state
-let routineActive;
-let routineClock;
-
-// Per-trial state (set at the start of each trial routine)
-let currentTrial;
-let currentTrialIdx;
-let currentInfoType;
-let currentLabelText;
-let currentQOrder;
-let currentQIdx;
-let currentQResults;
-
-// Sub-routine phases within the trial (enumerated for the EachFrame dispatch)
-// Phase sequence per trial mirrors behavioral_opt.py trial loop exactly:
-//   PRODUCT → FIX1 → INFO → FIX2 → QUESTION(s) with inter-question FIX
+// Per-routine phase state
 const Phase = Object.freeze({
-  PRODUCT  : 'PRODUCT',
-  FIX1     : 'FIX1',
-  INFO     : 'INFO',
-  FIX2     : 'FIX2',
-  QUESTION : 'QUESTION',
-  QFIX     : 'QFIX',
-  DONE     : 'DONE',
+  PRODUCT:'PRODUCT', FIX1:'FIX1', INFO:'INFO',
+  FIX2:'FIX2', QUESTION:'QUESTION', QFIX:'QFIX', DONE:'DONE',
 });
-let trialPhase;
-let phaseStartT;
-let phaseDuration;
-
-// Likert state within a question
-let likeratCurrent;      // 0-based index of selected circle
+let trialPhase, phaseStartT, phaseDuration;
+let currentTrial, currentTrialIdx, currentInfoType, currentLabelText;
+let currentQOrder, currentQIdx, currentQResults;
 let questionStartT;
+
+// Routine-level flags (intro / fixation)
+let routineActive, routineKb;
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  9. VISUAL HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
 
-// mirrors behavioral_opt.py make_image_stim() aspect-ratio-preserving scale
 function normSize(url) {
   const el = imgCache[url];
   if (el && el.naturalWidth && el.naturalHeight) {
@@ -429,17 +355,17 @@ function normSize(url) {
     const sc = Math.min(ww / iw, wh / ih);
     return [(iw * sc / ww) * 2, (ih * sc / wh) * 2];
   }
-  return [2, 2];  // safe fallback — fills screen
+  return [2, 2];
 }
 
-function applyImageToShared(path) {
+function applyImage(path) {
   sharedImageStim.setImage(path);
   sharedImageStim.setSize(normSize(path));
 }
 
-function setLabelText(text) {
-  labelStim.setText(text || '');
-  labelStim.setOpacity(text ? 1 : 0);
+function setLabel(text) {
+  if (text) { labelStim.setText(text); labelStim.setOpacity(1); }
+  else       { labelStim.setText('');  labelStim.setOpacity(0); }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -447,43 +373,31 @@ function setLabelText(text) {
 // ─────────────────────────────────────────────────────────────────────────────
 class LikertScale {
   constructor(win, leftLabel = '', rightLabel = '') {
-    const n  = CFG.scale_n;
+    const n = CFG.scale_n;
     const xs = Array.from({ length: n }, (_, i) =>
-      CFG.scale_x_left + i * (CFG.scale_x_right - CFG.scale_x_left) / (n - 1)
-    );
+      CFG.scale_x_left + i * (CFG.scale_x_right - CFG.scale_x_left) / (n - 1));
     const r = CFG.circle_radius;
 
     this.circles = xs.map(x => new visual.Polygon({
-      win, edges: 64, radius: r,
-      pos: [x, CFG.scale_y],
+      win, edges: 64, radius: r, pos: [x, CFG.scale_y],
       lineColor: new util.Color(CFG.text_color), lineWidth: 4,
       fillColor: null, units: 'height',
     }));
-
     this.numbers = xs.map((x, i) => new visual.TextStim({
-      win, text: String(i + 1),
-      pos: [x, CFG.numbers_y],
-      height: CFG.text_height_medium,
-      color: CFG.text_color, font: CFG.font, bold: true,
-      alignText: 'center', units: 'height',
+      win, text: String(i + 1), pos: [x, CFG.numbers_y],
+      height: CFG.text_height_medium, color: CFG.text_color,
+      font: CFG.font, bold: true, alignText: 'center', units: 'height',
     }));
-
     this.leftDesc = leftLabel ? new visual.TextStim({
-      win, text: leftLabel,
-      pos: [CFG.scale_x_left - 2 * r, CFG.desc_y],
-      height: CFG.text_height_small,
-      color: CFG.text_color, font: CFG.font, bold: true,
-      alignText: 'left', anchorHoriz: 'left', units: 'height',
+      win, text: leftLabel, pos: [CFG.scale_x_left - 2 * r, CFG.desc_y],
+      height: CFG.text_height_small, color: CFG.text_color,
+      font: CFG.font, bold: true, alignText: 'left', anchorHoriz: 'left', units: 'height',
     }) : null;
-
     this.rightDesc = rightLabel ? new visual.TextStim({
-      win, text: rightLabel,
-      pos: [CFG.scale_x_right + 2 * r, CFG.desc_y],
-      height: CFG.text_height_small,
-      color: CFG.text_color, font: CFG.font, bold: true,
-      alignText: 'right', anchorHoriz: 'right', units: 'height',
+      win, text: rightLabel, pos: [CFG.scale_x_right + 2 * r, CFG.desc_y],
+      height: CFG.text_height_small, color: CFG.text_color,
+      font: CFG.font, bold: true, alignText: 'right', anchorHoriz: 'right', units: 'height',
     }) : null;
-
     this.current = null;
   }
 
@@ -499,64 +413,46 @@ class LikertScale {
     if (this.rightDesc) this.rightDesc.draw();
   }
 
-  // mirrors behavioral_opt.py LikertScale.handle_key()
-  // Returns true when Enter is pressed with a selection
   handleKey(key) {
-    const mid = Math.floor(CFG.scale_n / 2);
-    const n   = CFG.scale_n;
-    if      (key === 'left')                           this.current = this.current === null ? mid : Math.max(0, this.current - 1);
-    else if (key === 'right')                          this.current = this.current === null ? mid : Math.min(n - 1, this.current + 1);
+    const mid = Math.floor(CFG.scale_n / 2), n = CFG.scale_n;
+    if      (key === 'left')                            this.current = this.current === null ? mid : Math.max(0, this.current - 1);
+    else if (key === 'right')                           this.current = this.current === null ? mid : Math.min(n - 1, this.current + 1);
     else if (key === 'return' && this.current !== null) return true;
     return false;
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  11. SCHEDULER HOOKS
+//  11. updateInfo  (mirrors samplesetup.js — timestamps only)
 // ─────────────────────────────────────────────────────────────────────────────
-
 async function updateInfo() {
-  expInfo['date']          = util.MonotonicClock.getDateStr();
-  expInfo['expName']       = expName;
+  expInfo['date']            = util.MonotonicClock.getDateStr();
+  expInfo['expName']         = expName;
   expInfo['psychopyVersion'] = '2024.1.4';
-  expInfo['OS']            = window.navigator.platform;
-  psychoJS.experiment.dataFileName = `data/${expInfo['Participant ID']}_${expName}_${expInfo['date']}`;
+  expInfo['OS']              = window.navigator.platform;
+  psychoJS.experiment.dataFileName =
+    `data/${expInfo['Participant ID']}_${expName}_${expInfo['date']}`;
   psychoJS.experiment.field_separator = '\t';
   return Scheduler.Event.NEXT;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  12. experimentInit  — VISUAL ALLOCATION ONLY (mirrors samplesetup.js)
+//      No CSV reads, no TrialHandler, no await.  Just stims + clocks.
+// ─────────────────────────────────────────────────────────────────────────────
 async function experimentInit() {
-  // ── Clocks ────────────────────────────────────────────────────────────────
   globalClock  = new util.Clock();
   routineTimer = new util.CountdownTimer();
 
-  // ── Validate participant ID ────────────────────────────────────────────────
-  participantID = String(expInfo['Participant ID']).trim();
-  if (!participantID) {
-    alert('Participant ID cannot be empty.');
-    return quitPsychoJS('No participant ID', false);
-  }
-
-  peerNames = [1, 2, 3, 4].map(i => String(expInfo[`Peer ${i}`]).trim());
-  if (peerNames.some(n => !n)) {
-    alert('All four peer name fields must be filled in.');
-    return quitPsychoJS('Missing peer names', false);
-  }
-
-  // ── Warm background image cache immediately ────────────────────────────────
-  // mirrors behavioral_opt.py: starts fetching all 320 trial images in the
-  // background while intro/setup continues, so they are ready by trial time.
-  warmImageCache();
-
-  // ── Allocate reusable stims (once, mirrors LikertScale and label alloc) ────
   const win = psychoJS.window;
 
   sharedImageStim = new visual.ImageStim({
-    win, pos: [0, 0], size: [2, 2], units: 'norm',
+    win, name: 'sharedImage',
+    pos: [0, 0], size: [2, 2], units: 'norm',
   });
 
   labelStim = new visual.TextStim({
-    win, text: '',
+    win, name: 'labelStim', text: '',
     pos: [CFG.label_x, CFG.label_y],
     height: CFG.text_height_big,
     color: CFG.text_color, font: CFG.font,
@@ -564,7 +460,6 @@ async function experimentInit() {
     units: 'norm', opacity: 0,
   });
 
-  // mirrors behavioral_opt.py main() scales dict
   scales = {
     credEX    : new LikertScale(win, '전혀 전문적이지 않다', '매우 전문적이다'),
     credCON   : new LikertScale(win, '전혀 반영하지 않는다', '매우 반영한다'),
@@ -573,78 +468,24 @@ async function experimentInit() {
     preference: new LikertScale(win, '전혀 선호하지 않음',   '매우 선호함'),
   };
 
-  // ── Load expert_labels.csv ─────────────────────────────────────────────────
-  // mirrors behavioral_opt.py expert_label_map: { norm(product_ENG) → label }
-  // File naming: stim/02_information/expert_labels.csv  (no header; product,label)
-  try {
-    const raw = psychoJS.serverManager.getResource('expert_labels.csv');
-    // PsychoJS returns file content as a string after preloading
-    const text = (typeof raw === 'string') ? raw : new TextDecoder().decode(raw);
-    for (const line of text.split(/\r?\n/)) {
-      const ci = line.indexOf(',');
-      if (ci === -1) continue;
-      const product = normStr(line.slice(0, ci));
-      const label   = line.slice(ci + 1).trim();
-      if (product && label) expertLabelMap[product] = label;
-    }
-  } catch (e) {
-    console.error('Failed to parse expert_labels.csv:', e);
-  }
-
-  // ── Load product_list.csv via TrialHandler ─────────────────────────────────
-  // mirrors behavioral_opt.py pd.read_excel() → df.to_dict('records')
-  const th = new TrialHandler({
-    psychoJS, nReps: 1,
-    method: TrialHandler.Method.SEQUENTIAL,
-    trialList: 'product_list.csv',
-  });
-
-  // mirrors behavioral_opt.py constrained_shuffle(rows, key_fn=genre|class|price, max_run=2)
-  trialRows = constrainedShuffle(
-    th.trialList.map(r => ({ ...r })),
-    r => `${r.genre}|${r.classification}|${r.price_range}`,
-    CFG.max_run,
-  );
-
-  const nTrials = trialRows.length;
-
-  // mirrors behavioral_opt.py assign_info_types_balanced()
-  infoAssignment = assignInfoTypesBalanced(trialRows, Object.keys(INFO_CODE_MAP), CFG.max_run);
-
-  // mirrors behavioral_opt.py build_balanced_question_orders() called twice
-  const ALL_GPT   = permutations(GPT_QUESTIONS);
-  const ALL_OTHER = permutations(OTHER_QUESTIONS);
-
-  balancedOrdersGpt   = buildBalancedQuestionOrders(ALL_GPT,   nTrials, CFG.question_order_max_run);
-  balancedOrdersOther = buildBalancedQuestionOrders(ALL_OTHER, nTrials, CFG.question_order_max_run);
-
-  gptCounter   = 0;
-  otherCounter = 0;
-
   return Scheduler.Event.NEXT;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  12. INTRO ROUTINE  (mirrors behavioral_opt.py show_intro)
-//  Displays stim/04_intro/intro.png; advances on Space or Return.
+//  13. INTRO ROUTINE  (mirrors behavioral_opt.py show_intro)
 // ─────────────────────────────────────────────────────────────────────────────
-let introKb;
-
 function introRoutineBegin() {
   return async function () {
     routineActive = true;
-    routineClock  = new util.Clock();
-
-    applyImageToShared('stim/04_intro/intro.png');
-    setLabelText(null);
-
-    introKb = new core.Keyboard({ psychoJS, clock: routineClock, waitForStart: true });
-
+    applyImage('stim/04_intro/intro.png');
+    setLabel(null);
     sharedImageStim.setAutoDraw(true);
+    labelStim.setAutoDraw(false);
 
-    introKb.clock.reset();
-    introKb.start();
-    introKb.clearEvents();
+    routineKb = new core.Keyboard({ psychoJS, clock: new util.Clock(), waitForStart: true });
+    routineKb.clock.reset();
+    routineKb.start();
+    routineKb.clearEvents();
 
     return Scheduler.Event.NEXT;
   };
@@ -652,15 +493,14 @@ function introRoutineBegin() {
 
 function introRoutineEachFrame() {
   return async function () {
-    if (psychoJS.eventManager.getKeys({ keyList: ['escape'] }).length > 0)
+    if (psychoJS.experiment.experimentEnded ||
+        psychoJS.eventManager.getKeys({ keyList: ['escape'] }).length > 0)
       return quitPsychoJS('Escape', false);
 
-    const keys = introKb.getKeys({ keyList: ['space', 'return'], waitRelease: false });
+    const keys = routineKb.getKeys({ keyList: ['space', 'return'], waitRelease: false });
     if (keys.length > 0) routineActive = false;
 
-    if (!routineActive) {
-      return Scheduler.Event.NEXT;
-    }
+    if (!routineActive) return Scheduler.Event.NEXT;
     return Scheduler.Event.FLIP_REPEAT;
   };
 }
@@ -668,36 +508,37 @@ function introRoutineEachFrame() {
 function introRoutineEnd() {
   return async function () {
     sharedImageStim.setAutoDraw(false);
-    introKb.stop();
+    routineKb.stop();
     return Scheduler.Event.NEXT;
   };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  13. OPENING FIXATION ROUTINE  (mirrors behavioral_opt.py show_fixation(3,3))
+//  14. OPENING FIXATION  (mirrors behavioral_opt.py show_fixation(mindur=3,maxdur=3))
 // ─────────────────────────────────────────────────────────────────────────────
-function openingFixationRoutineBegin() {
+function openingFixationBegin() {
   return async function () {
-    routineClock = new util.Clock();
-    applyImageToShared('stim/00_fixation/fixation.png');
+    applyImage('stim/00_fixation/fixation.png');
     sharedImageStim.setSize([2, 2]);
-    setLabelText(null);
+    setLabel(null);
     sharedImageStim.setAutoDraw(true);
+    labelStim.setAutoDraw(false);
     routineTimer.add(3.0);
     return Scheduler.Event.NEXT;
   };
 }
 
-function openingFixationRoutineEachFrame() {
+function openingFixationEachFrame() {
   return async function () {
-    if (psychoJS.eventManager.getKeys({ keyList: ['escape'] }).length > 0)
+    if (psychoJS.experiment.experimentEnded ||
+        psychoJS.eventManager.getKeys({ keyList: ['escape'] }).length > 0)
       return quitPsychoJS('Escape', false);
     if (routineTimer.getTime() <= 0) return Scheduler.Event.NEXT;
     return Scheduler.Event.FLIP_REPEAT;
   };
 }
 
-function openingFixationRoutineEnd() {
+function openingFixationEnd() {
   return async function () {
     sharedImageStim.setAutoDraw(false);
     return Scheduler.Event.NEXT;
@@ -705,16 +546,100 @@ function openingFixationRoutineEnd() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  14. TRIAL LOOP  (mirrors behavioral_opt.py for t_idx, trial in enumerate(trials))
+//  15. TRIALS LOOP BEGIN
+//
+//  CSV parsing and randomization live here — AFTER PsychoJS has confirmed
+//  every declared resource is loaded.  Matches samplesetup.js pattern
+//  where TrialHandler is constructed inside trialsLoopBegin.
 // ─────────────────────────────────────────────────────────────────────────────
 function trialsLoopBegin(loopScheduler) {
   return async function () {
+
+    // ── Validate participant fields ────────────────────────────────────────
+    participantID = String(expInfo['Participant ID']).trim();
+    if (!participantID) {
+      alert('Participant ID cannot be empty.');
+      return quitPsychoJS('No participant ID', false);
+    }
+    peerNames = [1, 2, 3, 4].map(i => String(expInfo[`Peer ${i}`]).trim());
+    if (peerNames.some(n => !n)) {
+      alert('All four peer name fields must be filled in.');
+      return quitPsychoJS('Missing peer names', false);
+    }
+
+    // ── Warm background image cache ────────────────────────────────────────
+    warmImageCache();
+
+    // ── Parse expert_labels.csv ────────────────────────────────────────────
+    //   Resource is guaranteed loaded by now.
+    //   Format: no header; each line = product_ENG,label
+    //   mirrors behavioral_opt.py expert_label_map construction
+    try {
+      const raw  = psychoJS.serverManager.getResource('expert_labels.csv');
+      const text = (typeof raw === 'string') ? raw : new TextDecoder().decode(raw);
+      for (const line of text.split(/\r?\n/)) {
+        const ci = line.indexOf(',');
+        if (ci === -1) continue;
+        const product = normStr(line.slice(0, ci));
+        const label   = line.slice(ci + 1).trim();
+        if (product && label) expertLabelMap[product] = label;
+      }
+    } catch (e) {
+      console.error('expert_labels.csv parse error:', e);
+    }
+
+    // ── Parse product_list.csv ─────────────────────────────────────────────
+    //   Parsed synchronously from the preloaded resource instead of passing
+    //   the filename string to TrialHandler (which would trigger another async
+    //   fetch and could hang the Scheduler).
+    //   mirrors behavioral_opt.py pd.read_excel → df.to_dict('records')
+    let rawRows = [];
+    try {
+      const raw  = psychoJS.serverManager.getResource('product_list.csv');
+      const text = (typeof raw === 'string') ? raw : new TextDecoder().decode(raw);
+      const lines = text.split(/\r?\n/).filter(l => l.trim());
+      const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+      for (let i = 1; i < lines.length; i++) {
+        const vals = lines[i].split(',').map(v => v.trim().replace(/^"|"$/g, ''));
+        if (vals.length < headers.length) continue;
+        const row = {};
+        headers.forEach((h, idx) => { row[h] = vals[idx] || ''; });
+        rawRows.push(row);
+      }
+    } catch (e) {
+      console.error('product_list.csv parse error:', e);
+    }
+
+    // ── Constrained shuffle  (mirrors behavioral_opt.py constrained_shuffle)
+    trialRows = constrainedShuffle(
+      rawRows,
+      r => `${r.genre}|${r.classification}|${r.price_range}`,
+      CFG.max_run,
+    );
+
+    const nTrials = trialRows.length;
+
+    // ── Info type assignment
+    infoAssignment = assignInfoTypesBalanced(
+      trialRows, Object.keys(INFO_CODE_MAP), CFG.max_run,
+    );
+
+    // ── Balanced question order pools (mirrors behavioral_opt.py, called twice)
+    const ALL_GPT   = permutations(GPT_QUESTIONS);
+    const ALL_OTHER = permutations(OTHER_QUESTIONS);
+    balancedOrdersGpt   = buildBalancedQuestionOrders(ALL_GPT,   nTrials, CFG.question_order_max_run);
+    balancedOrdersOther = buildBalancedQuestionOrders(ALL_OTHER, nTrials, CFG.question_order_max_run);
+    gptCounter   = 0;
+    otherCounter = 0;
+
+    // ── Schedule one routine per trial ────────────────────────────────────
     for (let i = 0; i < trialRows.length; i++) {
-      loopScheduler.add(trialRoutineBegin(i));
-      loopScheduler.add(trialRoutineEachFrame());
-      loopScheduler.add(trialRoutineEnd(i));
+      loopScheduler.add(trialBegin(i));
+      loopScheduler.add(trialEachFrame());
+      loopScheduler.add(trialEnd(i));
     }
     loopScheduler.add(async () => Scheduler.Event.NEXT);
+
     return Scheduler.Event.NEXT;
   };
 }
@@ -724,33 +649,27 @@ async function trialsLoopEnd() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  15. TRIAL ROUTINE  (one routine handles all phases of a single trial)
+//  16. TRIAL ROUTINE
 //
-//  Phase sequence (mirrors behavioral_opt.py trial loop body exactly):
-//    PRODUCT → FIX1 → INFO → FIX2 → QUESTION → QFIX → … → DONE
+//  Single routine that sequences all phases of one trial via trialPhase flag:
+//    PRODUCT → FIX1 → INFO → FIX2 → QUESTION[0..n] (+QFIX after each) → DONE
 //
-//  Each EachFrame call advances the phase when the duration/keypress condition
-//  is met, exactly replicating the Python while-loop structure.
+//  Mirrors behavioral_opt.py trial loop body exactly.
 // ─────────────────────────────────────────────────────────────────────────────
 let trialKb;
 
-function trialRoutineBegin(trialIdx) {
+function trialBegin(idx) {
   return async function () {
-    currentTrial    = trialRows[trialIdx];
-    currentTrialIdx = trialIdx + 1;   // 1-based, mirrors Python t_idx
+    currentTrial    = trialRows[idx];
+    currentTrialIdx = idx + 1;
+    currentInfoType = infoAssignment[idx];
 
-    // ── Resolve endorsement type & label (mirrors behavioral_opt.py) ──────
-    currentInfoType = infoAssignment[trialIdx];
-
-    const peerName = (currentInfoType === 'peer')
-      ? peerNames[Math.floor(Math.random() * peerNames.length)]
-      : null;
-    const expertLabel = (currentInfoType === 'expert')
-      ? (expertLabelMap[normStr(currentTrial.product_ENG)] || null)
-      : null;
+    const peerName = currentInfoType === 'peer'
+      ? peerNames[Math.floor(Math.random() * peerNames.length)] : null;
+    const expertLabel = currentInfoType === 'expert'
+      ? (expertLabelMap[normStr(currentTrial.product_ENG)] || null) : null;
     currentLabelText = resolveLabel(currentInfoType, peerName, expertLabel);
 
-    // ── Pick question order (mirrors behavioral_opt.py gpt/other counter) ─
     if (currentInfoType === 'gpt') {
       currentQOrder = balancedOrdersGpt[gptCounter % balancedOrdersGpt.length].slice();
       gptCounter++;
@@ -758,65 +677,59 @@ function trialRoutineBegin(trialIdx) {
       currentQOrder = balancedOrdersOther[otherCounter % balancedOrdersOther.length].slice();
       otherCounter++;
     }
-
     currentQIdx     = 0;
     currentQResults = {};
 
-    // ── Keyboard (shared across all phases) ───────────────────────────────
     trialKb = new core.Keyboard({ psychoJS, clock: globalClock, waitForStart: true });
     trialKb.start();
     trialKb.clearEvents();
 
-    // ── Start PRODUCT phase ───────────────────────────────────────────────
-    await waitForImage(`stim/01_product/${currentTrial.product_ENG.trim()}.png`);
-    _beginProductPhase();
-
+    _startProductPhase();
     return Scheduler.Event.NEXT;
   };
 }
 
-// ── Phase-begin helpers ───────────────────────────────────────────────────────
+// ── Phase starters ────────────────────────────────────────────────────────────
 
-function _beginProductPhase() {
+function _startProductPhase() {
   trialPhase    = Phase.PRODUCT;
   phaseDuration = CFG.product_dur;
   phaseStartT   = globalClock.getTime();
-  applyImageToShared(`stim/01_product/${currentTrial.product_ENG.trim()}.png`);
-  setLabelText(null);
+  applyImage(`stim/01_product/${currentTrial.product_ENG.trim()}.png`);
+  setLabel(null);
   sharedImageStim.setAutoDraw(true);
   labelStim.setAutoDraw(false);
 }
 
-function _beginFixPhase(nextPhase) {
+function _startFixPhase(nextPhase) {
   trialPhase    = nextPhase;
   phaseDuration = CFG.fix_min + Math.random() * (CFG.fix_max - CFG.fix_min);
   phaseStartT   = globalClock.getTime();
-  applyImageToShared('stim/00_fixation/fixation.png');
+  applyImage('stim/00_fixation/fixation.png');
   sharedImageStim.setSize([2, 2]);
-  setLabelText(null);
+  setLabel(null);
   sharedImageStim.setAutoDraw(true);
   labelStim.setAutoDraw(false);
 }
 
-async function _beginInfoPhase() {
-  const suffix   = INFO_CODE_MAP[currentInfoType];
-  const infoPath = `stim/02_information/${currentTrial.product_ENG.trim()}_${suffix}.png`;
-  await waitForImage(infoPath);
+function _startInfoPhase() {
+  const suffix  = INFO_CODE_MAP[currentInfoType];
+  const path    = `stim/02_information/${currentTrial.product_ENG.trim()}_${suffix}.png`;
   trialPhase    = Phase.INFO;
   phaseDuration = CFG.info_dur;
   phaseStartT   = globalClock.getTime();
-  applyImageToShared(infoPath);
-  setLabelText(currentLabelText);
+  applyImage(path);
+  setLabel(currentLabelText);
   sharedImageStim.setAutoDraw(true);
   labelStim.setAutoDraw(!!currentLabelText);
 }
 
-function _beginQuestionPhase() {
+function _startQuestionPhase() {
   trialPhase = Phase.QUESTION;
   const qKey  = currentQOrder[currentQIdx];
   const qDef  = QUESTION_DEFS[qKey];
-  applyImageToShared(`stim/03_question/${qDef.bg}`);
-  setLabelText(currentLabelText);
+  applyImage(`stim/03_question/${qDef.bg}`);
+  setLabel(currentLabelText);
   sharedImageStim.setAutoDraw(true);
   labelStim.setAutoDraw(!!currentLabelText);
   scales[qKey].reset();
@@ -824,11 +737,12 @@ function _beginQuestionPhase() {
   trialKb.clearEvents();
 }
 
-// ── Per-frame dispatcher ──────────────────────────────────────────────────────
+// ── EachFrame dispatcher ──────────────────────────────────────────────────────
 
-function trialRoutineEachFrame() {
+function trialEachFrame() {
   return async function () {
-    if (psychoJS.eventManager.getKeys({ keyList: ['escape'] }).length > 0)
+    if (psychoJS.experiment.experimentEnded ||
+        psychoJS.eventManager.getKeys({ keyList: ['escape'] }).length > 0)
       return quitPsychoJS('Escape', false);
 
     const t = globalClock.getTime();
@@ -836,10 +750,9 @@ function trialRoutineEachFrame() {
     if (trialPhase === Phase.PRODUCT) {
       sharedImageStim.draw();
       if ((t - phaseStartT) >= phaseDuration) {
-        // log product event
         logEvent(participantID, currentTrialIdx, 'product',
           `${currentTrial.product_ENG}.png`, phaseStartT, t);
-        _beginFixPhase(Phase.FIX1);
+        _startFixPhase(Phase.FIX1);
       }
       return Scheduler.Event.FLIP_REPEAT;
     }
@@ -848,7 +761,7 @@ function trialRoutineEachFrame() {
       sharedImageStim.draw();
       if ((t - phaseStartT) >= phaseDuration) {
         logEvent(participantID, currentTrialIdx, 'fixation', 'fixation.png', phaseStartT, t);
-        await _beginInfoPhase();
+        _startInfoPhase();
       }
       return Scheduler.Event.FLIP_REPEAT;
     }
@@ -860,7 +773,7 @@ function trialRoutineEachFrame() {
         const suffix = INFO_CODE_MAP[currentInfoType];
         logEvent(participantID, currentTrialIdx, 'info',
           `${currentTrial.product_ENG}_${suffix}.png`, phaseStartT, t);
-        _beginFixPhase(Phase.FIX2);
+        _startFixPhase(Phase.FIX2);
       }
       return Scheduler.Event.FLIP_REPEAT;
     }
@@ -869,7 +782,7 @@ function trialRoutineEachFrame() {
       sharedImageStim.draw();
       if ((t - phaseStartT) >= phaseDuration) {
         logEvent(participantID, currentTrialIdx, 'fixation', 'fixation.png', phaseStartT, t);
-        _beginQuestionPhase();
+        _startQuestionPhase();
       }
       return Scheduler.Event.FLIP_REPEAT;
     }
@@ -882,15 +795,14 @@ function trialRoutineEachFrame() {
 
       const keys = trialKb.getKeys({ keyList: ['left', 'right', 'return'], waitRelease: false });
       for (const kobj of keys) {
-        const key = kobj.name || kobj;
+        const key = typeof kobj === 'string' ? kobj : kobj.name;
         if (scales[qKey].handleKey(key)) {
-          // participant confirmed
-          const endT = globalClock.getTime();
-          const rt   = endT - questionStartT;
-          const score = scales[qKey].current + 1;   // 1-based (mirrors Python)
+          const endT  = globalClock.getTime();
+          const rt    = endT - questionStartT;
+          const score = scales[qKey].current + 1;
           currentQResults[qKey] = { score, rt };
           logEvent(participantID, currentTrialIdx, 'question', qKey, questionStartT, endT, rt);
-          _beginFixPhase(Phase.QFIX);
+          _startFixPhase(Phase.QFIX);
           break;
         }
       }
@@ -902,27 +814,23 @@ function trialRoutineEachFrame() {
       if ((t - phaseStartT) >= phaseDuration) {
         logEvent(participantID, currentTrialIdx, 'fixation', 'fixation.png', phaseStartT, t);
         currentQIdx++;
-        if (currentQIdx < currentQOrder.length) {
-          _beginQuestionPhase();
-        } else {
-          trialPhase = Phase.DONE;
-        }
+        if (currentQIdx < currentQOrder.length) _startQuestionPhase();
+        else trialPhase = Phase.DONE;
       }
       return Scheduler.Event.FLIP_REPEAT;
     }
 
-    // Phase.DONE — fall through to End
+    // Phase.DONE
     return Scheduler.Event.NEXT;
   };
 }
 
-function trialRoutineEnd(trialIdx) {
+function trialEnd(idx) {
   return async function () {
     sharedImageStim.setAutoDraw(false);
     labelStim.setAutoDraw(false);
     trialKb.stop();
 
-    // mirrors behavioral_opt.py results_rows.append(dict(...))
     const g   = k => currentQResults[k]?.score ?? '';
     const grt = k => currentQResults[k]?.rt    ?? '';
 
@@ -947,27 +855,19 @@ function trialRoutineEnd(trialIdx) {
       Preference_RT          : grt('preference'),
     });
 
-    // mirrors behavioral_opt.py flush_csvs() called after every trial
     flushCSVs(participantID);
-
-    if (psychoJS.experiment._currentLoopIteration !== undefined) {
-      psychoJS.experiment.nextEntry();
-    }
-
+    psychoJS.experiment.nextEntry();
     return Scheduler.Event.NEXT;
   };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  16. QUIT  (mirrors samplesetup.js quitPsychoJS)
+//  17. QUIT  (mirrors samplesetup.js quitPsychoJS)
 // ─────────────────────────────────────────────────────────────────────────────
 async function quitPsychoJS(message, isCompleted) {
-  // mirrors behavioral_opt.py finally block: flush on exit regardless
   if (participantID) flushCSVs(participantID);
-
-  if (psychoJS.experiment && psychoJS.experiment.isEntryEmpty()) {
+  if (psychoJS.experiment && psychoJS.experiment.isEntryEmpty())
     psychoJS.experiment.nextEntry();
-  }
   psychoJS.window.close();
   psychoJS.quit({ message, isCompleted });
   return Scheduler.Event.QUIT;
