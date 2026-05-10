@@ -350,9 +350,10 @@ async function experimentInit() {
 
   // ── colour constants (built after psychoJS is ready) ─────────────────────
   _colRed   = new util.Color('red');
-  // Transparent fill: RGBA array with alpha=0. This is the PsychoJS equivalent
-  // of Python's fillColor=None (no fill, outline only).
-  _colClear = new util.Color([0, 0, 0, 0]);
+  // "Clear" fill: use the background colour so unselected circles appear hollow.
+  // util.Color does NOT accept a 4-element RGBA array (alpha is unsupported);
+  // passing [0,0,0,0] causes "argument should be an array of numbers of length 3".
+  _colClear = new util.Color(CFG.bg_color);
 
   // ── stimuli ───────────────────────────────────────────────────────────────
 
