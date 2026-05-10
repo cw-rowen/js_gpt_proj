@@ -1,3 +1,7 @@
+import { core, data, util, visual } from './lib/psychojs-2026.1.3.js';
+const { PsychoJS } = core;
+const { TrialHandler } = data;
+const { Scheduler } = util;
 
 // ─────────────────────────────────────────────
 //  1. CONFIGURATION
