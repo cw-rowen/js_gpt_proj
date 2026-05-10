@@ -4,160 +4,183 @@ const { TrialHandler } = data;
 const { Scheduler } = util;
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  CONFIG 
+//  1. CONFIGURATION  (mirrors behavioral_opt.py CFG dict)
 // ─────────────────────────────────────────────────────────────────────────────
 const CFG = {
-  product_dur : 4.0,
-  info_dur    : 9.0,
-  fix_min     : 0.5,
-  fix_max     : 1.5,
-  max_run     : 2,
-  question_order_max_run: 3,
-  text_color  : 'white',
-  font        : 'NanumGothic',
-  scale_n        : 7,
-  circle_radius  : 0.065, 
-  scale_y        : -0.15, 
-  numbers_y      : -0.27,
-  desc_y         : -0.35,
-  label_x        : -0.75,
-  label_y        :  0.75,
-  scale_x_left   : -0.6,
-  scale_x_right  :  0.6,
-  text_height_big    : 0.07,
-  text_height_medium : 0.045,
-  text_height_small  : 0.05,
+  product_xl   : "product_list.csv",
+  stim_root    : "stim",
+  results_root : "pilot_results",
+
+  // timing
+  product_dur  : 4.0,
+  info_dur     : 9.0,
+  fix_min      : 0.5,
+  fix_max      : 1.5,
+
+  // randomization
+  max_run                : 2,
+  question_order_max_run : 3,
+
+  // text
+  font               : "NanumGothic",
+  text_color         : "white",
+  text_height_big    : 0.15,    // endorsement label (norm units)
+  text_height_medium : 0.045,   // Likert numbers (height units)
+  text_height_small  : 0.05,    // Likert endpoint desc (height units)
+
+  // scale (all scale elements use "height" units, matching Python)
+  scale_n       : 7,
+  circle_radius : 0.065,
+  scale_y       : -0.15,
+  numbers_y     : -0.27,
+  desc_y        : -0.35,
+  label_x       : -0.75,
+  label_y       :  0.75,
+  scale_x_left  : -0.6,
+  scale_x_right :  0.6,
 };
 
-const INFO_TYPES    = ['expert', 'consensus', 'peer', 'gpt'];
-const INFO_CODE_MAP = { expert:'01', consensus:'02', peer:'03', gpt:'04' };
+// ─────────────────────────────────────────────────────────────────────────────
+//  2. INFO TYPE MAPS  (mirrors behavioral_opt.py INFO_CODE_MAP / INFO_LABEL_MAP)
+// ─────────────────────────────────────────────────────────────────────────────
+const INFO_CODE_MAP = {
+  expert    : "01",
+  consensus : "02",
+  peer      : "03",
+  gpt       : "04",
+};
 
+// expert resolved dynamically; peer resolved dynamically
 const INFO_LABEL_MAP = {
-  consensus: '[소비자 의견 종합]',
-  gpt      : '[ChatGPT]',
+  consensus : "[소비자 의견 종합]",
+  gpt       : "[ChatGPT]",
 };
 
-// Questions shown per endorser type
-const GPT_QUESTIONS   = ['credEX', 'credCON', 'credPEER', 'credGen', 'preference'];
-const OTHER_QUESTIONS = ['credGen', 'preference'];
-
+// ─────────────────────────────────────────────────────────────────────────────
+//  3. QUESTION DEFINITIONS  (mirrors behavioral_opt.py QUESTION_DEFS)
+// ─────────────────────────────────────────────────────────────────────────────
 const QUESTION_DEFS = {
-  credEX   : { bg:'credibility_EX.png',      left:'전혀 전문적이지 않다', right:'매우 전문적이다' },
-  credCON  : { bg:'credibility_CON.png',      left:'전혀 반영하지 않는다', right:'매우 반영한다'  },
-  credPEER : { bg:'credibility_PEER.png',     left:'전혀 가깝지 않다',     right:'매우 가깝다'    },
-  credGen  : { bg:'credibility_general.png',  left:'전혀 믿지 않음',       right:'매우 신뢰함'    },
-  preference:{ bg:'preference.png',           left:'전혀 선호하지 않음',   right:'매우 선호함'    },
+  credEX   : { bg: "credibility_EX.png",      left: "전혀 전문적이지 않다", right: "매우 전문적이다" },
+  credCON  : { bg: "credibility_CON.png",     left: "전혀 반영하지 않는다", right: "매우 반영한다"   },
+  credPEER : { bg: "credibility_PEER.png",    left: "전혀 가깝지 않다",     right: "매우 가깝다"     },
+  credGen  : { bg: "credibility_general.png", left: "전혀 믿지 않음",       right: "매우 신뢰함"     },
+  preference: { bg: "preference.png",         left: "전혀 선호하지 않음",   right: "매우 선호함"     },
 };
 
+// GPT gets all 5 credibility+preference Qs; other endorsers get 2
+const GPT_QUESTIONS   = ["credEX", "credCON", "credPEER", "credGen", "preference"];
+const OTHER_QUESTIONS = ["credGen", "preference"];
 
-// Helper to match Python's filename handling
-function getProductFilename(name) {
-    return `${name.trim()}.png`;
+// ─────────────────────────────────────────────────────────────────────────────
+//  4. RESOURCE MANIFEST
+//
+//  ROOT CAUSE OF [Init] HANG: PsychoJS preloads every entry in RESOURCES
+//  synchronously before showing anything. With 64 products × 4 info codes =
+//  256 info images + 64 product images = 325 total files, Pavlovia times out.
+//
+//  FIX: Only declare the small static assets here (CSVs + 7 PNGs = 9 files).
+//  Trial images (product + info) are loaded on-demand via the browser's native
+//  image cache (imgCache below). The browser fetches them in the background
+//  during the experiment so subsequent trials show instantly.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Only static assets that must exist before the experiment can start
+const RESOURCES = [
+  { name: 'product_list.csv',              path: 'product_list.csv'              },
+  { name: 'expert_labels.csv',             path: 'expert_labels.csv'             },
+  { name: 'stim/00_fixation/fixation.png', path: 'stim/00_fixation/fixation.png' },
+  { name: 'stim/04_intro/intro.png',       path: 'stim/04_intro/intro.png'       },
+  ...Object.values(QUESTION_DEFS).map(q => ({
+    name: `stim/03_question/${q.bg}`,
+    path: `stim/03_question/${q.bg}`,
+  })),
+];
+// 4 + 5 = 9 resources — Init completes immediately.
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  4b. BACKGROUND IMAGE CACHE
+//
+//  Kicks off native browser fetch for all 320 trial images right after Init,
+//  so they are warm in the HTTP cache by the time each trial needs them.
+//  Uses HTMLImageElement — zero PsychoJS involvement, no blocking.
+// ─────────────────────────────────────────────────────────────────────────────
+const PRODUCTS = [
+  "airfryer","bath_bomb","body_lotion","body_mist","bread","cable_organizer","cake","canned_tuna",
+  "caviar","chips","chocolate","cookies","cup_ramen","decorative_magnet","decorative_tape","disposable_camera",
+  "egronomics_chair_seat","egyptian_cotton_sheets_set","electric_toothbrush","fountain_pen","frozen_pizza",
+  "gaming_console","hair_brush","instant_coffee","instant_coffee_maker","laptop_stand","leather_notebook",
+  "LED_mood_light","lip_balm","luxury_perfume","mango_set","manuka_honey","massaging_roller","memo_pads",
+  "mini_camera","mouse_pad","multitab","oil_pastels","organic_olive_oil","paper_weight","pen",
+  "portable_charger","portable_humidifier","projector","rc_car","roll-on_mini_perfume","scented_hand_cream",
+  "scientific_calculator","shampoo","singing_bowl","skin_care_device","SSD_external_storage","stamp",
+  "steak_500g","stickers","supplements","tablet","tea_gift_set","vacuum_cleaner","VR_headset",
+  "wax_burner","wax_seal_kit","weighted_blanket","wireless_keyboard",
+];
+
+// Holds live HTMLImageElement references so the browser doesn't GC them
+// before the trial that needs them. Keyed by URL string.
+const imgCache = {};
+
+function warmImageCache() {
+  const urls = [
+    ...PRODUCTS.map(p => `stim/01_product/${p}.png`),
+    ...PRODUCTS.flatMap(p =>
+      Object.values(INFO_CODE_MAP).map(code => `stim/02_information/${p}_${code}.png`)
+    ),
+  ];
+  for (const url of urls) {
+    if (!imgCache[url]) {
+      const el = new Image();
+      el.src = url;           // browser fetches and caches immediately
+      imgCache[url] = el;     // keep reference alive
+    }
+  }
 }
 
-function getInfoFilename(name, code) {
-    return `${name.trim()}_${code}.png`;
+// Returns a promise that resolves when the image at `url` is fully loaded.
+// If it is already cached (complete), resolves on the next microtask.
+function waitForImage(url) {
+  const el = imgCache[url];
+  if (!el) {
+    // Shouldn't happen after warmImageCache(), but handle gracefully
+    const fresh = new Image();
+    imgCache[url] = fresh;
+    fresh.src = url;
+    return new Promise(resolve => {
+      fresh.onload  = resolve;
+      fresh.onerror = resolve;  // resolve anyway; PsychoJS will show a broken image
+    });
+  }
+  if (el.complete) return Promise.resolve();
+  return new Promise(resolve => {
+    el.onload  = resolve;
+    el.onerror = resolve;
+  });
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  5. HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+// mirrors behavioral_opt.py norm()
 function norm(s) {
-    return String(s).trim().toLowerCase();
+  return String(s).trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  EXPERT LABELS (Refreshed from your expert_labels.csv)
-// ─────────────────────────────────────────────────────────────────────────────
-const EXPERT_LABEL_MAP = {
-  'airfryer': '[식품공학 전문가]',
-  'bath bomb': '[화장품 성분 전문가]',
-  'body lotion': '[피부과 전문의]',
-  'body mist': '[향료 전문가]',
-  'bread': '[제빵사]',
-  'cable organizer': '[제품디자인 전문가]',
-  'cake': '[제과 전문가]',
-  'canned tuna': '[식품영양 전문가]',
-  'caviar': '[식품감별 전문가]',
-  'chips': '[식품공정 전문가]',
-  'chocolate': '[쇼콜라티에]',
-  'cookies': '[제과 연구원]',
-  'cup ramen': '[식품안전 전문가]',
-  'decorative magnet': '[산업디자인 전문가]',
-  'decorative tape': '[시각디자인 전문가]',
-  'disposable camera': '[사진기술 전문가]',
-  'egronomics chair seat': '[인체공학 전문가]',
-  'egyptian cotton sheets set': '[섬유소재 전문가]',
-  'electric toothbrush': '[치과 위생 전문가]',
-  'fountain pen': '[필기구 전문가]',
-  'frozen pizza': '[식품개발 전문가]',
-  'gaming console': '[게임공학 전문가]',
-  'hair brush': '[모발관리 전문가]',
-  'instant coffee maker': '[가전기기 전문가]',
-  'instant coffee': '[식품관능 평가사]',
-  'laptop stand': '[인체공학 전문가]',
-  'leather notebook': '[제품디자인 전문가]',
-  'LED mood light': '[조명설계 전문가]',
-  'lip balm': '[피부과 전문의]',
-  'luxury perfume': '[조향 전문가]',
-  'mango set': '[식품품질 전문가]',
-  'manuka honey': '[식품영양 전문가]',
-  'massaging roller': '[물리치료 전문가]',
-  'memo pads': '[문구제품 디자이너]',
-  'mini camera': '[광학기기 전문가]',
-  'mouse pad': '[산업디자인 전문가]',
-  'multitab': '[전기안전 전문가]',
-  'oil pastels': '[미술재료 전문가]',
-  'organic olive oil': '[식품영양 전문가]',
-  'paper weight': '[제품디자인 전문가]',
-  'pen': '[필기구 전문가]',
-  'portable charger': '[전기전자 전문가]',
-  'portable humidifier': '[환경가전 전문가]',
-  'projector': '[영상기기 전문가]',
-  'rc car': '[완구공학 전문가]',
-  'roll-on mini perfume': '[조향 전문가]',
-  'scented hand cream': '[피부과 전문의]',
-  'scientific calculator': '[수학교육 전문가]',
-  'shampoo': '[두피관리 전문가]',
-  'singing bowl': '[명상 테라피 전문가]',
-  'skin care device': '[피부미용기기 전문가]',
-  'SSD external storage': '[컴퓨터공학 전문가]',
-  'stamp': '[문구디자인 전문가]',
-  'steak 500g': '[식육가공 전문가]',
-  'stickers': '[시각디자인 전문가]',
-  'supplements': '[영양학 전문가]',
-  'tablet': '[IT기기 전문가]',
-  'tea gift set': '[차 소믈리에]',
-  'vacuum cleaner': '[가전공학 전문가]',
-  'VR headset': '[가상현실 전문가]',
-  'wax burner': '[조향 분석 전문가]',
-  'wax seal kit': '[공예 전문가]',
-  'weighted blanket': '[수면과학 전문가]',
-  'wireless keyboard': '[인체공학 전문가]'
-};
-
-
-function getExpertLabel(productENG) {
-  return EXPERT_LABEL_MAP[norm(productENG)] || null;
+// mirrors behavioral_opt.py resolve_label()
+// peer_name: string | null,  expertLabel: string | null
+function resolveLabel(infoType, peerName, expertLabel) {
+  if (infoType === "peer") {
+    return peerName ? `[${peerName}의 추천]` : null;
+  }
+  if (infoType === "expert") {
+    // expert_label (from CSV) takes priority; fall back to INFO_LABEL_MAP["expert"] (undefined = null)
+    return expertLabel || INFO_LABEL_MAP["expert"] || null;
+  }
+  return INFO_LABEL_MAP[infoType] || null;   // consensus → string, gpt → string, else null
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  PSYCHOJS INIT
-// ─────────────────────────────────────────────────────────────────────────────
-const psychoJS = new PsychoJS({ debug: false });
-
-psychoJS.start({
-  expName : 'EndorsementStudy',
-  expInfo : {
-    'Participant ID' : '',
-    'Peer 1'         : '',
-    'Peer 2'         : '',
-    'Peer 3'         : '',
-    'Peer 4'         : '',
-  },
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  RANDOMISATION HELPERS  (direct ports of the Python functions)
-// ─────────────────────────────────────────────────────────────────────────────
-
-/** Fisher-Yates in-place shuffle */
+// Fisher-Yates shuffle (in-place, returns array)
 function shuffleArray(arr) {
   for (let i = arr.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -166,540 +189,616 @@ function shuffleArray(arr) {
   return arr;
 }
 
-function randUniform(min, max) { return min + Math.random() * (max - min); }
-function randomChoice(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
-
-/** Check the whole sequence has no run longer than maxRun */
+// mirrors behavioral_opt.py is_valid_run()
 function isValidRun(seq, maxRun) {
   let run = 1;
   for (let i = 1; i < seq.length; i++) {
-    run = seq[i] === seq[i - 1] ? run + 1 : 1;
+    run = (seq[i] === seq[i - 1]) ? run + 1 : 1;
     if (run > maxRun) return false;
   }
   return true;
 }
 
-/**
- * Shuffle rows so no more than maxRun consecutive trials share the same
- * (genre, classification, price_range) combination.
- * Mirrors Python constrained_shuffle().
- */
-function constrainedShuffle(rows, maxRun, maxTries = 20000) {
-  const key = r => `${r.genre}|${r.classification}|${r.price_range}`;
-  for (let t = 0; t < maxTries; t++) {
+// mirrors behavioral_opt.py constrained_shuffle()
+// keyFn: row → string used for run-length check
+function constrainedShuffle(rows, keyFn, maxRun = 2, maxTries = 20000) {
+  rows = rows.slice();
+  for (let attempt = 0; attempt < maxTries; attempt++) {
     shuffleArray(rows);
-    if (isValidRun(rows.map(key), maxRun)) return rows;
+    if (isValidRun(rows.map(keyFn), maxRun)) return rows;
   }
-  console.warn('constrainedShuffle: could not satisfy run constraint, using last shuffle');
+  console.warn("constrainedShuffle: could not satisfy run constraint; returning best effort.");
   return rows;
 }
 
-/**
- * Assign one info_type per trial, balanced across combo cells and overall counts,
- * respecting the max consecutive run constraint.
- * Mirrors Python assign_info_types_balanced().
- */
-function assignInfoTypes(rows, infoTypes, maxRun, maxTries = 5000) {
+// mirrors behavioral_opt.py assign_info_types_balanced()
+// Greedy approach: for each trial, pick the info type with the smallest
+// per-combo count (tiebreak: smallest overall count, tiebreak: random).
+// Also enforces the max_run constraint on consecutive identical info types.
+function assignInfoTypesBalanced(rows, infoTypes, maxRun = 2, maxTries = 5000) {
   const comboKey = r => `${r.genre}|${r.classification}|${r.price_range}`;
 
   for (let attempt = 0; attempt < maxTries; attempt++) {
-    const overall  = Object.fromEntries(infoTypes.map(t => [t, 0]));
-    const perCombo = {};
+    const overall   = {};
+    const perCombo  = {};
+    infoTypes.forEach(t => { overall[t] = 0; });
+
     const assigned = [];
     let ok = true;
 
     for (let i = 0; i < rows.length; i++) {
       const ck = comboKey(rows[i]);
-      if (!perCombo[ck]) perCombo[ck] = Object.fromEntries(infoTypes.map(t => [t, 0]));
+      if (!perCombo[ck]) {
+        perCombo[ck] = {};
+        infoTypes.forEach(t => { perCombo[ck][t] = 0; });
+      }
 
-      // enforce consecutive-run constraint
-      let candidates = [...infoTypes];
+      // enforce run constraint
+      let candidates = infoTypes.slice();
       if (assigned.length >= maxRun) {
         const last = assigned[assigned.length - 1];
-        if (assigned.slice(-maxRun).every(x => x === last)) {
-          candidates = candidates.filter(t => t !== last);
-        }
+        const allSame = assigned.slice(-maxRun).every(x => x === last);
+        if (allSame) candidates = candidates.filter(t => t !== last);
       }
-      if (!candidates.length) { ok = false; break; }
+      if (candidates.length === 0) { ok = false; break; }
 
-      // score: min per-combo count → min overall count → random tiebreak
-      const scored = candidates.map(t => [perCombo[ck][t], overall[t], Math.random(), t]);
-      scored.sort((a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2]);
-      const chosen = scored[0][3];
+      // score: [perCombo count, overall count, random tiebreak]
+      const scored = candidates.map(t => ({
+        t,
+        score: [perCombo[ck][t], overall[t], Math.random()],
+      }));
+      scored.sort((a, b) => {
+        for (let k = 0; k < a.score.length; k++) {
+          if (a.score[k] !== b.score[k]) return a.score[k] - b.score[k];
+        }
+        return 0;
+      });
+      const chosen = scored[0].t;
 
       assigned.push(chosen);
       overall[chosen]++;
       perCombo[ck][chosen]++;
     }
+
     if (ok) return assigned;
   }
-  throw new Error('assignInfoTypes: could not satisfy constraints');
+  throw new Error("assignInfoTypesBalanced: could not satisfy constraints.");
 }
 
-/** All permutations of an array */
-function permutations(arr) {
-  if (arr.length <= 1) return [[...arr]];
-  return arr.flatMap((v, i) =>
-    permutations([...arr.slice(0, i), ...arr.slice(i + 1)]).map(p => [v, ...p])
-  );
-}
-
-/**
- * Whether inserting `candidate` into `history` would violate the position-run constraint.
- * Mirrors Python is_valid_position_runs().
- */
-function isValidPositionRuns(history, candidate, maxRun) {
+// mirrors behavioral_opt.py is_valid_position_runs()
+// Checks whether appending `candidate` order to `history` violates
+// the per-position max-run constraint.
+function isValidPositionRuns(history, candidate, maxRun = 3) {
   for (let pos = 0; pos < candidate.length; pos++) {
     let run = 1;
-    for (let j = history.length - 1; j >= 0; j--) {
-      if (history[j][pos] === candidate[pos]) run++;
-      else break;
+    for (let h = history.length - 1; h >= 0; h--) {
+      if (history[h][pos] === candidate[pos]) {
+        run++;
+      } else {
+        break;
+      }
     }
     if (run > maxRun) return false;
   }
   return true;
 }
 
-/**
- * Build a list of nTrials question orderings from allOrders with the
- * position-run constraint. Mirrors Python build_balanced_question_orders().
- */
-function buildBalancedQuestionOrders(allOrders, nTrials, maxRun, maxTries = 500) {
+// All permutations of an array (mirrors itertools.permutations)
+function permutations(arr) {
+  if (arr.length <= 1) return [arr.slice()];
+  const result = [];
+  for (let i = 0; i < arr.length; i++) {
+    const rest = arr.slice(0, i).concat(arr.slice(i + 1));
+    for (const perm of permutations(rest)) {
+      result.push([arr[i], ...perm]);
+    }
+  }
+  return result;
+}
+
+// mirrors behavioral_opt.py build_balanced_question_orders()
+function buildBalancedQuestionOrders(allOrders, nTrials, maxRun = 3, maxTries = 5000) {
   for (let attempt = 0; attempt < maxTries; attempt++) {
-    // build pool ≥ nTrials
-    let pool = [];
-    while (pool.length < nTrials) pool = pool.concat(shuffleArray([...allOrders]));
-    pool = pool.slice(0, nTrials);
+    // build a pool of at least nTrials shuffled copies
+    const pool = [];
+    while (pool.length < nTrials) {
+      const chunk = allOrders.slice();
+      shuffleArray(chunk);
+      pool.push(...chunk);
+    }
+    pool.length = nTrials;
 
     const arranged = [];
-    const remaining = [...pool];
+    const remaining = pool.slice();
 
     while (remaining.length > 0) {
       const valid = remaining.filter(o => isValidPositionRuns(arranged, o, maxRun));
-      if (!valid.length) break;
-      const chosen = randomChoice(valid);
+      if (valid.length === 0) break;
+      const chosen = valid[Math.floor(Math.random() * valid.length)];
       arranged.push(chosen);
       remaining.splice(remaining.indexOf(chosen), 1);
     }
+
     if (arranged.length === nTrials) return arranged;
   }
-  // fallback: unconstrained pool
-  console.warn('buildBalancedQuestionOrders: constraint not satisfied, using fallback');
-  let pool = [];
-  while (pool.length < nTrials) pool = pool.concat(shuffleArray([...allOrders]));
-  return pool.slice(0, nTrials);
+  throw new Error("buildBalancedQuestionOrders: could not satisfy position-run constraint.");
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  LABEL RESOLVER
+//  6. PSYCHOJS INITIALIZATION
 // ─────────────────────────────────────────────────────────────────────────────
-function resolveLabel(infoType, peerName, expertLabel) {
-  if (infoType === 'peer')   return peerName   ? `[${peerName}의 추천]` : null;
-  if (infoType === 'expert') return expertLabel || null;
-  return INFO_LABEL_MAP[infoType] || null;
-}
+const psychoJS = new PsychoJS({ debug: false });
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  GLOBAL STATE
-// ─────────────────────────────────────────────────────────────────────────────
-let win, globalClock;
-let bgImage, infoImage, questionImage, fixImage;
-let labelStim, scaleCircles, scaleNumbers, scaleLeftDesc, scaleRightDesc;
-let currentScaleIdx; // null | 0-based integer
-
-const resultsRows = [];
-const timingRows  = [];
-let eventCounter  = 0;
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  VISUAL SETUP
-// ─────────────────────────────────────────────────────────────────────────────
-
-function makeScaleXs() {
-  return Array.from({ length: CFG.scale_n }, (_, i) =>
-    CFG.scale_x_left + i * (CFG.scale_x_right - CFG.scale_x_left) / (CFG.scale_n - 1)
-  );
-}
-
-function createVisuals() {
-  // Reusable image stims – size [2,2] norm = full screen
-  bgImage       = new visual.ImageStim({ win, name:'bgImage',   pos:[0,0], units:'norm', size:[2,2] });
-  infoImage     = new visual.ImageStim({ win, name:'infoImage', pos:[0,0], units:'norm', size:[2,2] });
-  questionImage = new visual.ImageStim({ win, name:'qImage',    pos:[0,0], units:'norm', size:[2,2] });
-  fixImage      = new visual.ImageStim({ win, name:'fixImage',  pos:[0,0], units:'norm', size:[2,2] });
-
-  labelStim = new visual.TextStim({
-    win, name:'label', text:'',
-    pos:[CFG.label_x, CFG.label_y],
-    height:CFG.text_height_big,
-    color:CFG.text_color, font:CFG.font, bold:true,
-    alignText:'left', anchorHoriz:'left', anchorVert:'top',
-    units:'norm',
-  });
-
-  const xs = makeScaleXs();
-
-  scaleCircles = xs.map((x, i) => new visual.Polygon({
-    win, name:`circle_${i}`, edges:64,
-    radius:CFG.circle_radius, pos:[x, CFG.scale_y],
-    lineColor:CFG.text_color, lineWidth:4, fillColor:null, units:'height',
-  }));
-
-  scaleNumbers = xs.map((x, i) => new visual.TextStim({
-    win, name:`num_${i}`, text:String(i + 1),
-    pos:[x, CFG.numbers_y], height:CFG.text_height_medium,
-    color:CFG.text_color, font:CFG.font, bold:true,
-    alignText:'center', units:'height',
-  }));
-
-  scaleLeftDesc = new visual.TextStim({
-    win, name:'leftDesc', text:'',
-    pos:[CFG.scale_x_left - 2 * CFG.circle_radius, CFG.desc_y],
-    height:CFG.text_height_small, color:CFG.text_color, font:CFG.font, bold:true,
-    alignText:'left', anchorHoriz:'left', units:'height',
-  });
-
-  scaleRightDesc = new visual.TextStim({
-    win, name:'rightDesc', text:'',
-    pos:[CFG.scale_x_right + 2 * CFG.circle_radius, CFG.desc_y],
-    height:CFG.text_height_small, color:CFG.text_color, font:CFG.font, bold:true,
-    alignText:'right', anchorHoriz:'right', units:'height',
-  });
-}
-
-function configureScale(leftLabel, rightLabel) {
-  scaleLeftDesc.setText(leftLabel);
-  scaleRightDesc.setText(rightLabel);
-  currentScaleIdx = null;
-}
-
-function drawScale() {
-  for (let i = 0; i < CFG.scale_n; i++) {
-    scaleCircles[i].setFillColor(currentScaleIdx === i ? new util.Color('red') : null);
-    scaleCircles[i].draw();
-    scaleNumbers[i].draw();
-  }
-  scaleLeftDesc.draw();
-  scaleRightDesc.draw();
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  LOGGING
-// ─────────────────────────────────────────────────────────────────────────────
-
-function logEvent(ID, trialIdx, eventType, stimName, startT, endT, rt) {
-  eventCounter++;
-  timingRows.push({
-    ID,
-    Trial    : trialIdx,
-    EventN   : eventCounter,
-    EventType: eventType,
-    StimName : stimName,
-    StartTime: startT,
-    EndTime  : endT,
-    Duration : eventType !== 'question' ? (endT - startT) : '',
-    RT       : eventType === 'question' ? rt : '',
-  });
-}
-
-/** Trigger a browser download of rows as a CSV */
-function downloadCSV(filename, rows) {
-  if (!rows.length) return;
-  const headers = Object.keys(rows[0]);
-  const esc = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const csv = [headers.map(esc).join(','), ...rows.map(r => headers.map(h => esc(r[h])).join(','))].join('\n');
-  const a = Object.assign(document.createElement('a'), {
-    href    : URL.createObjectURL(new Blob([csv], { type:'text/csv;charset=utf-8;' })),
-    download: filename,
-  });
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  SCREEN ROUTINES
-// ─────────────────────────────────────────────────────────────────────────────
-
-/** Show `stim` image for `duration` seconds. Draws `labelText` on top if provided. */
-function showImageTimed(stim, imageName, duration, labelText) {
-  stim.setImage(imageName);
-  if (labelText) labelStim.setText(labelText);
-
-  return new Promise(resolve => {
-    const startT = globalClock.getTime();
-    const endT   = startT + duration;
-    (function frame() {
-      stim.draw();
-      if (labelText) labelStim.draw();
-      win.flip();
-      globalClock.getTime() >= endT
-        ? resolve({ startT, endT: globalClock.getTime() })
-        : requestAnimationFrame(frame);
-    })();
-  });
-}
-
-/** Show fixation image for a random duration in [fixMin, fixMax]. */
-function showFixation(fixMin, fixMax) {
-  fixImage.setImage('fixation.png');
-  const duration = randUniform(fixMin ?? CFG.fix_min, fixMax ?? CFG.fix_max);
-  return new Promise(resolve => {
-    const startT = globalClock.getTime();
-    const endT   = startT + duration;
-    (function frame() {
-      fixImage.draw();
-      win.flip();
-      globalClock.getTime() >= endT
-        ? resolve({ startT, endT: globalClock.getTime() })
-        : requestAnimationFrame(frame);
-    })();
-  });
-}
-
-/** Show intro image; advance on Space or Return. */
-function showIntro() {
-  bgImage.setImage('intro.png');
-  return new Promise(resolve => {
-    (function frame() {
-      bgImage.draw();
-      win.flip();
-      psychoJS.eventManager.getKeys({ keyList:['space','return'] }).length
-        ? resolve()
-        : requestAnimationFrame(frame);
-    })();
-  });
-}
-
-/**
- * Show question background + Likert scale.
- * Arrow keys navigate, Return confirms.
- * Returns { score (1-7), rt, startT, endT }.
- */
-function showQuestion(questionName, labelText) {
-  const qDef = QUESTION_DEFS[questionName];
-  questionImage.setImage(qDef.bg);
-  configureScale(qDef.left, qDef.right);
-  if (labelText) labelStim.setText(labelText);
-
-  return new Promise(resolve => {
-    psychoJS.eventManager.clearEvents({ eventType:'keyboard' });
-    const startT = globalClock.getTime();
-
-    (function frame() {
-      questionImage.draw();
-      if (labelText) labelStim.draw();
-      drawScale();
-      win.flip();
-
-      for (const key of psychoJS.eventManager.getKeys({ keyList:['left','right','return'] })) {
-        if (key === 'left') {
-          currentScaleIdx = currentScaleIdx === null ? Math.floor(CFG.scale_n / 2) : Math.max(0, currentScaleIdx - 1);
-        } else if (key === 'right') {
-          currentScaleIdx = currentScaleIdx === null ? Math.floor(CFG.scale_n / 2) : Math.min(CFG.scale_n - 1, currentScaleIdx + 1);
-        } else if (key === 'return' && currentScaleIdx !== null) {
-          const endT = globalClock.getTime();
-          resolve({ score: currentScaleIdx + 1, rt: endT - startT, startT, endT });
-          return;
-        }
-      }
-      requestAnimationFrame(frame);
-    })();
-  });
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  MAIN EXPERIMENT FLOW
-// ─────────────────────────────────────────────────────────────────────────────
-
-async function runExperiment() {
-  // Window
-  win = new visual.Window({
-    fullscr:true, color:new util.Color([0,0,0]), units:'norm', waitBlanking:true,
-  });
-  win.mouseVisible = false;
-  globalClock = new core.Clock();
-
-  createVisuals();
-
-  // Participant info from dialog
-  const ID        = String(psychoJS.extraInfo['Participant ID']).trim();
-  const peerNames = ['Peer 1','Peer 2','Peer 3','Peer 4']
-    .map(k => String(psychoJS.extraInfo[k]).trim())
-    .filter(n => n !== '');
-
-  // Load product list via TrialHandler (reads conditions.csv)
-  const trialHandler = new TrialHandler({
-    psychoJS, nReps:1, method:TrialHandler.Method.SEQUENTIAL,
-    trialList:'conditions.csv', name:'trials',
-  });
-
-  // Copy to plain array so we can shuffle & annotate
-  let rows = trialHandler.trialList.map(r => ({ ...r }));
-
-  // Per-participant randomisation
-  rows = constrainedShuffle(rows, CFG.max_run);
-  const infoAssignment = assignInfoTypes(rows, INFO_TYPES, CFG.max_run);
-
-  // Question order pools
-  const nTrials        = rows.length;
-  const gptOrders      = buildBalancedQuestionOrders(permutations(GPT_QUESTIONS),   nTrials, CFG.question_order_max_run);
-  const otherOrders    = buildBalancedQuestionOrders(permutations(OTHER_QUESTIONS), nTrials, CFG.question_order_max_run);
-  let gptCounter = 0, otherCounter = 0;
-
-  // Intro
-  await showIntro();
-  await showFixation(3, 3);
-
-  // ── Trial loop ───────────────────────────────────────────────────────────────
-  for (let tIdx = 0; tIdx < nTrials; tIdx++) {
-    const trial    = rows[tIdx];
-    const tNum     = tIdx + 1;
-    const infoType = infoAssignment[tIdx];
-    const code     = INFO_CODE_MAP[infoType];
-    // Use the product_ENG value from your product_list.csv
-    const pName = trial.product_ENG;
-    const productFile = `stim/01_product/${trial.product_ENG}.png`;
-    const infoFile    = `stim/02_information/${trial.product_ENG}_${code}.png`;
-    // Label for this trial
-    const peerName    = infoType === 'peer'   ? randomChoice(peerNames) : null;
-    const expertLabel = infoType === 'expert' ? getExpertLabel(trial.product_ENG) : null;
-    const labelText   = resolveLabel(infoType, peerName, expertLabel);
-
-    // Product
-    const { startT:pSt, endT:pEt } = await showImageTimed(bgImage, productFile, CFG.product_dur, null);
-    logEvent(ID, tNum, 'product', productFile, pSt, pEt);
-
-    // Fixation
-    { const { startT:s, endT:e } = await showFixation(); logEvent(ID, tNum, 'fixation', 'fixation.png', s, e); }
-
-    // Info
-    const { startT:iSt, endT:iEt } = await showImageTimed(infoImage, infoFile, CFG.info_dur, labelText);
-    logEvent(ID, tNum, 'info', infoFile, iSt, iEt);
-
-    // Fixation
-    { const { startT:s, endT:e } = await showFixation(); logEvent(ID, tNum, 'fixation', 'fixation.png', s, e); }
-
-    // Question order for this trial
-    const qOrder = infoType === 'gpt'
-      ? [...gptOrders[gptCounter++   % gptOrders.length]]
-      : [...otherOrders[otherCounter++ % otherOrders.length]];
-
-    // Questions
-    const qResults = {};
-    for (const qname of qOrder) {
-      const { score, rt, startT:qSt, endT:qEt } = await showQuestion(qname, labelText);
-      qResults[qname] = { score, rt };
-
-      // Log using the same StimName format as the real Timing CSV
-      const stimLabel = { credEX:'credibility_EX', credCON:'credibility_CON',
-        credPEER:'credibility_PEER', credGen:'credibility_general', preference:'preference' }[qname];
-      logEvent(ID, tNum, 'question', stimLabel, qSt, qEt, rt);
-
-      // Inter-question fixation
-      const { startT:fs, endT:fe } = await showFixation();
-      logEvent(ID, tNum, 'fixation', 'fixation.png', fs, fe);
-    }
-
-    // Results row — mirrors Results_<ID>.csv column order exactly
-    const g   = k => qResults[k]?.score ?? '';
-    const grt = k => qResults[k]?.rt    ?? '';
-    const qOrderLabel = qOrder.map(q => ({
-      credEX:'credibility_EX', credCON:'credibility_CON',
-      credPEER:'credibility_PEER', credGen:'credibility_general', preference:'preference',
-    }[q])).join('-');
-
-    resultsRows.push({
-      TrialNumber            : tNum,
-      ProductFilePath        : productFile,
-      product_ENG            : trial.product_ENG,
-      product_KOR            : trial.product_KOR,
-      genre                  : trial.genre,
-      classification         : trial.classification,
-      price_range            : trial.price_range,
-      InfoType               : infoType,
-      Q_Order                : qOrderLabel,
-      Credibility_EX         : g('credEX'),
-      Credibility_CON        : g('credCON'),
-      Credibility_PEER       : g('credPEER'),
-      Credibility_general    : g('credGen'),
-      Preference             : g('preference'),
-      Credibility_EX_RT      : grt('credEX'),
-      Credibility_CON_RT     : grt('credCON'),
-      Credibility_PEER_RT    : grt('credPEER'),
-      Credibility_general_RT : grt('credGen'),
-      Preference_RT          : grt('preference'),
-    });
-  }
-
-  // ── Download output files (mirrors pilot_results/<ID>/ output) ───────────────
-  downloadCSV(`Results_${ID}.csv`, resultsRows);
-  downloadCSV(`Timing_${ID}.csv`,  timingRows);
-
-  // End screen
-  const endText = new visual.TextStim({
-    win, text:'실험이 완료되었습니다.\n참여해 주셔서 감사합니다!',
-    pos:[0,0], height:0.1, color:'white', font:CFG.font,
-    wrapWidth:1.8, alignText:'center', units:'norm',
-  });
-  endText.draw();
-  win.flip();
-  await new Promise(r => setTimeout(r, 3000));
-
-  psychoJS.quit({ message:'Experiment complete', isCompleted:true });
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  RESOURCE LIST
-//  Because info_type is assigned at runtime, ALL 4 info images per product
-//  must be declared so PsychoJS preloads them before the experiment starts.
-// ─────────────────────────────────────────────────────────────────────────────
-const PRODUCTS = Object.keys(EXPERT_LABEL_MAP);
-
-const resources = [
-  { name: 'product_list.csv', path: 'product_list.csv' },
-  { name: 'stim/00_fixation/fixation.png', path: 'stim/00_fixation/fixation.png' },
-  { name: 'stim/04_intro/intro.png', path: 'stim/04_intro/intro.png' },
-  { name: 'stim/03_question/credibility_EX.png', path: 'stim/03_question/credibility_EX.png' },
-  { name: 'stim/03_question/credibility_CON.png', path: 'stim/03_question/credibility_CON.png' },
-  { name: 'stim/03_question/credibility_PEER.png', path: 'stim/03_question/credibility_PEER.png' },
-  { name: 'stim/03_question/credibility_general.png', path: 'stim/03_question/credibility_general.png' },
-  { name: 'stim/03_question/preference.png', path: 'stim/03_question/preference.png' },
-  ...PRODUCTS.map(p => ({ 
-    name: `stim/01_product/${p}.png`, 
-    path: `stim/01_product/${p}.png` 
-  })),
-  ...PRODUCTS.flatMap(p =>
-    ['01','02','03','04'].map(c => ({ 
-      name: `stim/02_information/${p}_${c}.png`, 
-      path: `stim/02_information/${p}_${c}.png` 
-    }))
-  ),
-];
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  SCHEDULER ENTRY POINT
-// ─────────────────────────────────────────────────────────────────────────────
-psychoJS.schedule(psychoJS.gui.DlgFromDict({
-  dictionary : psychoJS.extraInfo,
-  title      : '연구 참여 정보 입력',
-}));
-
-const flowScheduler   = new Scheduler(psychoJS);
-const cancelScheduler = new Scheduler(psychoJS);
-
-psychoJS.scheduleCondition(
-  () => psychoJS.gui.dialogComponent.button === 'OK',
-  flowScheduler, cancelScheduler
-);
-
-flowScheduler.add(psychoJS.setupWindowFromExperiment({ resources }));
-flowScheduler.add(psychoJS.setupExperiment());
-flowScheduler.add(() => runExperiment());
-
-cancelScheduler.add(() => {
-  psychoJS.quit({ message:'Cancelled by user' });
-  return Scheduler.Event.QUIT;
+psychoJS.start({
+  expName : 'EndorsementStudy',
+  expInfo : {
+    'Participant ID': '',
+    'Peer 1': 'A',
+    'Peer 2': 'B',
+    'Peer 3': 'C',
+    'Peer 4': 'D',
+  },
+  resources: RESOURCES,
 });
 
-psychoJS.start({ expName:'EndorsementStudy', expInfo: psychoJS.extraInfo });
+// ─────────────────────────────────────────────────────────────────────────────
+//  7. RESULTS / EVENT LOG  (mirrors behavioral_opt.py results_rows / event_log)
+// ─────────────────────────────────────────────────────────────────────────────
+const resultsRows = [];
+const eventLog    = [];
+let   eventCounter = 0;
+
+function logEvent(ID, trialIndex, eventType, stimName, startT, endT, rt = null) {
+  eventCounter++;
+  // duration only for non-question events (mirrors Python log_event)
+  const duration = eventType === "question"
+    ? ""
+    : (startT != null && endT != null ? endT - startT : "");
+  const rtVal = eventType === "question" ? rt : "";
+
+  eventLog.push({
+    ID, Trial: trialIndex, EventN: eventCounter,
+    EventType: eventType, StimName: stimName,
+    StartTime: startT, EndTime: endT,
+    Duration: duration, RT: rtVal,
+  });
+}
+
+function downloadCSV(filename, rows) {
+  if (!rows.length) return;
+  const header  = Object.keys(rows[0]).join(',');
+  const content = [header, ...rows.map(r =>
+    Object.values(r).map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')
+  )].join('\n');
+  const blob = new Blob(['\uFEFF' + content], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement("a");
+  link.href  = URL.createObjectURL(blob);
+  link.download = filename;
+  link.click();
+}
+
+// mirrors behavioral_opt.py flush_csvs() — called after every trial
+function flushCSVs(ID) {
+  downloadCSV(`Results_${ID}.csv`, resultsRows);
+  downloadCSV(`Timing_${ID}.csv`,  eventLog);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  8. VISUAL HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+// mirrors behavioral_opt.py make_image_stim():
+// Scales the image to fill the window while preserving aspect ratio.
+// Reads dimensions from imgCache (HTMLImageElement), which is always
+// populated by waitForImage() before the stim is drawn.
+function normSize(path) {
+  const el = imgCache[path];
+  if (el && el.naturalWidth && el.naturalHeight) {
+    const iw = el.naturalWidth, ih = el.naturalHeight;
+    const ww = window.innerWidth, wh = window.innerHeight;
+    const scale = Math.min(ww / iw, wh / ih);
+    return [(iw * scale / ww) * 2, (ih * scale / wh) * 2];
+  }
+  return [2, 2];  // fallback: fill screen (safe for fixation / known square stims)
+}
+
+function makeImageStim(win, path) {
+  const [wNorm, hNorm] = normSize(path);
+  return new visual.ImageStim({
+    win, image: path, pos: [0, 0],
+    size: [wNorm, hNorm], units: 'norm',
+  });
+}
+
+// Reuse a single ImageStim by updating its image and size (avoids re-allocation per frame)
+function reuseImageStim(stim, path) {
+  stim.setImage(path);
+  stim.setSize(normSize(path));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  9. LIKERT SCALE CLASS  (mirrors behavioral_opt.py LikertScale)
+// ─────────────────────────────────────────────────────────────────────────────
+class LikertScale {
+  constructor(win, leftLabel = '', rightLabel = '') {
+    const n    = CFG.scale_n;
+    const xs   = Array.from({ length: n }, (_, i) =>
+      CFG.scale_x_left + i * (CFG.scale_x_right - CFG.scale_x_left) / (n - 1)
+    );
+    const r    = CFG.circle_radius;
+
+    this.circles = xs.map(x => new visual.Polygon({
+      win, edges: 64, radius: r,
+      pos: [x, CFG.scale_y],
+      lineColor: new util.Color(CFG.text_color), lineWidth: 4,
+      units: 'height',
+    }));
+
+    this.numbers = xs.map((x, i) => new visual.TextStim({
+      win, text: String(i + 1),
+      pos: [x, CFG.numbers_y],
+      height: CFG.text_height_medium,
+      color: CFG.text_color, font: CFG.font,
+      bold: true, alignText: 'center', units: 'height',
+    }));
+
+    // Left description: anchor left, offset by 2*radius (mirrors Python scale_x_left - 2*r)
+    this.leftDesc = leftLabel ? new visual.TextStim({
+      win, text: leftLabel,
+      pos: [CFG.scale_x_left - 2 * r, CFG.desc_y],
+      height: CFG.text_height_small,
+      color: CFG.text_color, font: CFG.font, bold: true,
+      alignText: 'left', anchorHoriz: 'left', units: 'height',
+    }) : null;
+
+    // Right description: anchor right, offset by +2*radius
+    this.rightDesc = rightLabel ? new visual.TextStim({
+      win, text: rightLabel,
+      pos: [CFG.scale_x_right + 2 * r, CFG.desc_y],
+      height: CFG.text_height_small,
+      color: CFG.text_color, font: CFG.font, bold: true,
+      alignText: 'right', anchorHoriz: 'right', units: 'height',
+    }) : null;
+
+    this.current = null;  // 0-based index of selected circle
+  }
+
+  reset() { this.current = null; }
+
+  draw() {
+    const mid = Math.floor(CFG.scale_n / 2);  // default landing = middle (index 3)
+    for (let i = 0; i < this.circles.length; i++) {
+      this.circles[i].setFillColor(
+        this.current === i ? new util.Color('red') : null
+      );
+      this.circles[i].draw();
+      this.numbers[i].draw();
+    }
+    if (this.leftDesc)  this.leftDesc.draw();
+    if (this.rightDesc) this.rightDesc.draw();
+  }
+
+  // mirrors behavioral_opt.py LikertScale.handle_key()
+  // Returns true when Enter is pressed with a valid selection.
+  handleKey(key) {
+    const mid = Math.floor(CFG.scale_n / 2);
+    const n   = CFG.scale_n;
+    if (key === 'left') {
+      this.current = this.current === null ? mid : Math.max(0, this.current - 1);
+    } else if (key === 'right') {
+      this.current = this.current === null ? mid : Math.min(n - 1, this.current + 1);
+    } else if (key === 'return' && this.current !== null) {
+      return true;
+    }
+    return false;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  10. SCREEN FUNCTIONS
+// ─────────────────────────────────────────────────────────────────────────────
+
+// mirrors behavioral_opt.py show_intro()
+async function showIntro(win, path, globalClock) {
+  const stim = makeImageStim(win, path);
+  while (true) {
+    stim.draw();
+    win.flip();
+    const keys = psychoJS.eventManager.getKeys({ keyList: ['space', 'return', 'escape'] });
+    if (keys.includes('escape')) throw new Error('ESCAPE');
+    if (keys.includes('space') || keys.includes('return')) return;
+    await util.rejs();
+  }
+}
+
+// mirrors behavioral_opt.py show_image_timed()
+// Returns { startT, endT }
+async function showImageTimed(win, path, duration, globalClock, labelStim = null) {
+  reuseImageStim(win._sharedStim, path);
+  const startT = globalClock.getTime();
+  while ((globalClock.getTime() - startT) < duration) {
+    win._sharedStim.draw();
+    if (labelStim) labelStim.draw();
+    win.flip();
+    if (psychoJS.eventManager.getKeys({ keyList: ['escape'] }).length)
+      throw new Error('ESCAPE');
+    await util.rejs();
+  }
+  return { startT, endT: globalClock.getTime() };
+}
+
+// mirrors behavioral_opt.py show_fixation()
+// Returns { startT, endT }
+async function showFixation(win, globalClock, minDur, maxDur) {
+  const duration = minDur + Math.random() * (maxDur - minDur);
+  reuseImageStim(win._sharedStim, 'stim/00_fixation/fixation.png');
+  win._sharedStim.setSize([2, 2]); // fixation fills the screen
+  const startT = globalClock.getTime();
+  win._sharedStim.draw();
+  win.flip();
+  // busy-wait (mirrors psychopy core.wait inside checked_wait)
+  while ((globalClock.getTime() - startT) < duration) {
+    if (psychoJS.eventManager.getKeys({ keyList: ['escape'] }).length)
+      throw new Error('ESCAPE');
+    await util.rejs();
+  }
+  return { startT, endT: globalClock.getTime() };
+}
+
+// mirrors behavioral_opt.py show_question()
+// Returns { score (1-based), rt, startT, endT }
+async function showQuestion(win, bgPath, scale, globalClock, labelStim = null) {
+  reuseImageStim(win._sharedStim, bgPath);
+  scale.reset();
+  let startT = null;
+  while (true) {
+    win._sharedStim.draw();
+    if (labelStim) labelStim.draw();
+    scale.draw();
+    if (startT === null) startT = globalClock.getTime();
+    win.flip();
+    // Check all three valid keys
+    const keys = psychoJS.eventManager.getKeys({ keyList: ['left', 'right', 'return', 'escape'] });
+    for (const key of keys) {
+      if (key === 'escape') throw new Error('ESCAPE');
+      if (scale.handleKey(key)) {
+        const endT = globalClock.getTime();
+        return { score: scale.current + 1, rt: endT - startT, startT, endT };
+      }
+    }
+    await util.rejs();
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  11. MAIN EXPERIMENT
+// ─────────────────────────────────────────────────────────────────────────────
+async function runExperiment() {
+  const win = new visual.Window({
+    fullscr: true, color: new util.Color('black'), units: 'norm',
+  });
+
+  // A single reusable ImageStim stored on the window object (avoids alloc per frame)
+  win._sharedStim = new visual.ImageStim({
+    win, pos: [0, 0], size: [2, 2], units: 'norm',
+  });
+
+  const globalClock = new core.Clock();
+
+  // Kick off background fetch for all 320 trial images immediately after the
+  // window opens. They load in parallel while the intro / participant dialog
+  // is shown, so by the time trial 1 starts most images are already in the
+  // HTTP cache. warmImageCache() uses plain HTMLImageElement — no PsychoJS
+  // involvement, no blocking.
+  warmImageCache();
+
+  // ── Endorsement label stim (reused for info + question screens) ────────────
+  // mirrors behavioral_opt.py make_info_label()
+  const labelStim = new visual.TextStim({
+    win, text: '',
+    pos: [CFG.label_x, CFG.label_y],
+    height: CFG.text_height_big,
+    color: CFG.text_color, font: CFG.font,
+    bold: true, alignText: 'left', anchorHoriz: 'left', anchorVert: 'top',
+    units: 'norm',
+  });
+  function setLabel(text) {
+    labelStim.setText(text || '');
+  }
+
+  // ── Build Likert scales once (reused every trial) ──────────────────────────
+  // mirrors behavioral_opt.py main() scales dict
+  const scales = {
+    credEX   : new LikertScale(win, "전혀 전문적이지 않다", "매우 전문적이다"),
+    credCON  : new LikertScale(win, "전혀 반영하지 않는다", "매우 반영한다"),
+    credPEER : new LikertScale(win, "전혀 가깝지 않다",     "매우 가깝다"),
+    credGen  : new LikertScale(win, "전혀 믿지 않음",       "매우 신뢰함"),
+    preference: new LikertScale(win, "전혀 선호하지 않음",  "매우 선호함"),
+  };
+
+  const ID = psychoJS.extraInfo['Participant ID'];
+  const peerNames = [1, 2, 3, 4].map(i => psychoJS.extraInfo[`Peer ${i}`]);
+
+  // ── Load expert_labels.csv ─────────────────────────────────────────────────
+  // mirrors behavioral_opt.py expert_label_map construction.
+  // CSV has NO header: each line is "product name,label"  (product uses spaces, not underscores)
+  const expertLabelMap = {};
+  try {
+    const resp      = await fetch('expert_labels.csv');
+    const labelData = await resp.text();
+    for (const line of labelData.split(/\r?\n/)) {
+      const commaIdx = line.indexOf(',');
+      if (commaIdx === -1) continue;
+      const product = norm(line.slice(0, commaIdx));      // norm() matches Python
+      const label   = line.slice(commaIdx + 1).trim();
+      if (product && label) expertLabelMap[product] = label;
+    }
+  } catch (e) {
+    console.error("Failed to load expert_labels.csv:", e);
+  }
+
+  // ── Load product list via TrialHandler ─────────────────────────────────────
+  const trialHandler = new TrialHandler({
+    psychoJS, nReps: 1,
+    method: TrialHandler.Method.SEQUENTIAL,
+    trialList: 'product_list.csv',
+  });
+
+  // mirrors behavioral_opt.py: constrained_shuffle keyed on (genre, classification, price_range)
+  let rows = constrainedShuffle(
+    trialHandler.trialList.map(r => ({ ...r })),
+    r => `${r.genre}|${r.classification}|${r.price_range}`,
+    CFG.max_run,
+  );
+
+  const nTrials = rows.length;
+
+  // ── Assign info types ──────────────────────────────────────────────────────
+  // mirrors behavioral_opt.py assign_info_types_balanced()
+  const infoAssignment = assignInfoTypesBalanced(
+    rows, Object.keys(INFO_CODE_MAP), CFG.max_run,
+  );
+
+  // ── Build balanced question order pools ────────────────────────────────────
+  // mirrors behavioral_opt.py build_balanced_question_orders() called twice
+  const ALL_ORDERS_GPT   = permutations(GPT_QUESTIONS);
+  const ALL_ORDERS_OTHER = permutations(OTHER_QUESTIONS);
+
+  const balancedOrdersGpt   = buildBalancedQuestionOrders(
+    ALL_ORDERS_GPT,   nTrials, CFG.question_order_max_run,
+  );
+  const balancedOrdersOther = buildBalancedQuestionOrders(
+    ALL_ORDERS_OTHER, nTrials, CFG.question_order_max_run,
+  );
+  let gptCounter   = 0;
+  let otherCounter = 0;
+
+  // ── Intro + opening fixation ───────────────────────────────────────────────
+  // mirrors behavioral_opt.py: show_intro → show_fixation(3, 3)
+  try {
+    await showIntro(win, 'stim/04_intro/intro.png', globalClock);
+    await showFixation(win, globalClock, 3, 3);  // fixed 3-sec opening fixation
+
+    // ── Trial loop ─────────────────────────────────────────────────────────
+    for (let i = 0; i < rows.length; i++) {
+      const trial    = rows[i];
+      const tIdx     = i + 1;
+      const infoType = infoAssignment[i];
+
+      // ── 1. Product image ─────────────────────────────────────────────────
+      // mirrors behavioral_opt.py: show_image_timed(win, prod_path, product_dur)
+      // No label during product display.
+      const prodPath = `stim/01_product/${trial.product_ENG.trim()}.png`;
+      await waitForImage(prodPath);   // ensure cached before drawing
+      setLabel(null);
+      const { startT: pst, endT: pet } =
+        await showImageTimed(win, prodPath, CFG.product_dur, globalClock, null);
+      logEvent(ID, tIdx, "product", `${trial.product_ENG}.png`, pst, pet);
+
+      // ── 2. Fixation ──────────────────────────────────────────────────────
+      const { startT: fst1, endT: fet1 } =
+        await showFixation(win, globalClock, CFG.fix_min, CFG.fix_max);
+      logEvent(ID, tIdx, "fixation", "fixation.png", fst1, fet1);
+
+      // ── 3. Resolve endorsement label ─────────────────────────────────────
+      // mirrors behavioral_opt.py:
+      //   peer_name  = random.choice(peer_names) if info_type == "peer" else None
+      //   expert_label = expert_label_map.get(norm(trial["product_ENG"])) if info_type == "expert" else None
+      //   label_text = resolve_label(...)
+      const peerName = (infoType === "peer")
+        ? peerNames[Math.floor(Math.random() * peerNames.length)]
+        : null;
+      const expertLabel = (infoType === "expert")
+        ? (expertLabelMap[norm(trial.product_ENG)] || null)
+        : null;
+      const labelText = resolveLabel(infoType, peerName, expertLabel);
+
+      // ── 4. Endorsement information image ─────────────────────────────────
+      // mirrors behavioral_opt.py:
+      //   suffix = INFO_CODE_MAP[info_type]
+      //   product_stem = os.path.splitext(trial["ProductFilePath"])[0]
+      //   info_fname = f"{product_stem}_{suffix}.png"
+      const suffix   = INFO_CODE_MAP[infoType];
+      const infoPath = `stim/02_information/${trial.product_ENG.trim()}_${suffix}.png`;
+      await waitForImage(infoPath);   // ensure cached before drawing
+      setLabel(labelText);
+      const { startT: ist, endT: iet } =
+        await showImageTimed(win, infoPath, CFG.info_dur, globalClock, labelText ? labelStim : null);
+      logEvent(ID, tIdx, "info", `${trial.product_ENG}_${suffix}.png`, ist, iet);
+
+      // ── 5. Fixation ──────────────────────────────────────────────────────
+      const { startT: fst2, endT: fet2 } =
+        await showFixation(win, globalClock, CFG.fix_min, CFG.fix_max);
+      logEvent(ID, tIdx, "fixation", "fixation.png", fst2, fet2);
+
+      // ── 6. Questions ──────────────────────────────────────────────────────
+      // mirrors behavioral_opt.py:
+      //   if info_type == "gpt": q_order = list(balanced_orders_gpt[gpt_counter % ...])
+      //   else:                  q_order = list(balanced_orders_other[other_counter % ...])
+      let qOrder;
+      if (infoType === "gpt") {
+        qOrder = balancedOrdersGpt[gptCounter % balancedOrdersGpt.length].slice();
+        gptCounter++;
+      } else {
+        qOrder = balancedOrdersOther[otherCounter % balancedOrdersOther.length].slice();
+        otherCounter++;
+      }
+
+      const results = {};
+      for (const qKey of qOrder) {
+        const qDef  = QUESTION_DEFS[qKey];
+        const bgPath = `stim/03_question/${qDef.bg}`;
+
+        // label is shown on question screens too (mirrors behavioral_opt.py run_question)
+        const { score, rt, startT: qst, endT: qet } =
+          await showQuestion(win, bgPath, scales[qKey], globalClock, labelText ? labelStim : null);
+        results[qKey] = { score, rt };
+        logEvent(ID, tIdx, "question", qKey, qst, qet, rt);
+
+        // fixation after each question (mirrors behavioral_opt.py loop)
+        const { startT: fstQ, endT: fetQ } =
+          await showFixation(win, globalClock, CFG.fix_min, CFG.fix_max);
+        logEvent(ID, tIdx, "fixation", "fixation.png", fstQ, fetQ);
+      }
+
+      // ── 7. Save results row ───────────────────────────────────────────────
+      // mirrors behavioral_opt.py results_rows.append(dict(...))
+      const g   = k => results[k]?.score ?? '';
+      const grt = k => results[k]?.rt    ?? '';
+
+      resultsRows.push({
+        TrialNumber            : tIdx,
+        product_ENG            : trial.product_ENG,
+        product_KOR            : trial.product_KOR,
+        genre                  : trial.genre,
+        classification         : trial.classification,
+        price_range            : trial.price_range,
+        InfoType               : infoType,
+        Q_Order                : qOrder.join('-'),
+        Credibility_EX         : g('credEX'),
+        Credibility_CON        : g('credCON'),
+        Credibility_PEER       : g('credPEER'),
+        Credibility_general    : g('credGen'),
+        Preference             : g('preference'),
+        Credibility_EX_RT      : grt('credEX'),
+        Credibility_CON_RT     : grt('credCON'),
+        Credibility_PEER_RT    : grt('credPEER'),
+        Credibility_general_RT : grt('credGen'),
+        Preference_RT          : grt('preference'),
+      });
+
+      // mirrors behavioral_opt.py flush_csvs() called after every trial
+      flushCSVs(ID);
+    }
+
+    psychoJS.quit({ message: 'Success', isCompleted: true });
+
+  } catch (e) {
+    if (e.message !== 'ESCAPE') console.error(e);
+    // mirrors behavioral_opt.py finally block: flush on exit regardless
+    flushCSVs(ID);
+    psychoJS.quit({ message: 'Aborted', isCompleted: false });
+  }
+}
+
+runExperiment();
