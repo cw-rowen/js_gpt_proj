@@ -8,6 +8,19 @@
  *   one trial ahead. Trial 0 fetched in experimentInit (concurrent with
  *   intro + 3 s fixation). Trial N+1 fetched fire-and-forget in
  *   trialRoutineEnd(N).
+ *
+ * Key fixes vs previous version
+ * ──────────────────────────────
+ * 1. TrialHandler iteration: use .trialList directly (plain array).
+ * 2. No addData in intro routines (would corrupt trial 1's CSV row).
+ * 3. Arrow-key input: use psychoJS.eventManager.getKeys() directly,
+ *    matching Python's event.getKeys() pattern. No Keyboard component
+ *    needed for the scale – avoids all waitForStart timing issues.
+ * 4. Circle fill: use new util.Color('red') / new util.Color(CFG.bg_color)
+ *    to set/clear fill. undefined does not clear fill in PsychoJS.
+ * 5. Label x: -0.55 height units (≈ Python's norm -0.75), not -0.7
+ *    which clips off-screen on 16:9.
+ * 6. Scale overlaps question PNG (drawn after it, higher depth).
  ******************************************************************************/
 
 import { core, data, util, visual } from './lib/psychojs-2026.1.3.js';
