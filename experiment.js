@@ -506,17 +506,15 @@ async function experimentInit() {
   scaleKb = new core.Keyboard({ psychoJS, clock: new util.Clock(), waitForStart: true });
 
   // ── load expert labels CSV ──────────────────
-  const expertRows = data.importConditions(
-    psychoJS.serverManager.getResource('expert_labels.csv')
-  );
+  // serverManager.getResource() returns the raw text of a pre-registered CSV.
+  // parseCSV() converts it to an array of row objects (replaces data.importConditions).
+  const expertRows = parseCSV(psychoJS.serverManager.getResource('expert_labels.csv'));
   expertRows.forEach(row => {
     expertMap[normStr(row.product_ENG)] = String(row.expert_label).trim();
   });
 
   // ── load & validate product list CSV ────────
-  const productRows = data.importConditions(
-    psychoJS.serverManager.getResource('product_list.csv')
-  );
+  const productRows = parseCSV(psychoJS.serverManager.getResource('product_list.csv'));
 
   // required columns
   const reqCols = ['product_ENG', 'product_KOR', 'genre', 'classification', 'price_range'];
@@ -1032,4 +1030,65 @@ function linspace(start, stop, num) {
   if (num === 1) return [start];
   const step = (stop - start) / (num - 1);
   return Array.from({ length: num }, (_, i) => start + i * step);
+}
+
+/**
+ * parseCSV(text)
+ * Minimal RFC-4180 CSV parser.
+ * Handles quoted fields (including embedded commas and newlines),
+ * trims whitespace from unquoted values, and returns an array of
+ * plain objects keyed by the header row.
+ *
+ * This replaces data.importConditions(), which does not exist in
+ * PsychoJS 2026. serverManager.getResource(name) returns the raw
+ * file text for CSV resources; pass that string directly here.
+ */
+function parseCSV(text) {
+  // Normalise line endings
+  text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+  // Tokenise: split into fields respecting quoted strings
+  function tokeniseLine(line) {
+    const fields = [];
+    let i = 0;
+    while (i <= line.length) {
+      if (line[i] === '"') {
+        // Quoted field
+        let field = '';
+        i++; // skip opening quote
+        while (i < line.length) {
+          if (line[i] === '"' && line[i + 1] === '"') {
+            field += '"'; i += 2; // escaped quote
+          } else if (line[i] === '"') {
+            i++; break;            // closing quote
+          } else {
+            field += line[i++];
+          }
+        }
+        fields.push(field);
+        if (line[i] === ',') i++; // skip separator
+      } else {
+        // Unquoted field — read until next comma or end
+        const start = i;
+        while (i < line.length && line[i] !== ',') i++;
+        fields.push(line.slice(start, i).trim());
+        if (line[i] === ',') i++;
+      }
+      if (i > line.length) break;
+    }
+    return fields;
+  }
+
+  const lines = text.split('\n').filter(l => l.trim() !== '');
+  if (lines.length === 0) return [];
+
+  const headers = tokeniseLine(lines[0]);
+  const rows = [];
+  for (let li = 1; li < lines.length; li++) {
+    const vals = tokeniseLine(lines[li]);
+    const obj  = {};
+    headers.forEach((h, hi) => { obj[h.trim()] = vals[hi] !== undefined ? vals[hi] : ''; });
+    rows.push(obj);
+  }
+  return rows;
 }
