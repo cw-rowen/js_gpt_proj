@@ -1,33 +1,3 @@
-/******************************************************************************
- * experiment.js – Endorsement Study (PsychoJS 2026.1.3)
- *
- * Image-loading strategy
- * ──────────────────────
- * STARTUP: only 11 files preloaded.
- * PER-TRIAL: product + info images lazy-loaded via prepareResources()
- *   one trial ahead. Trial 0 fetched in experimentInit (concurrent with
- *   intro + 3 s fixation). Trial N+1 fetched fire-and-forget in
- *   trialRoutineEnd(N).
- *
- * Key fixes vs previous version
- * ──────────────────────────────
- * 1. TrialHandler iteration: use .trialList directly (plain array).
- * 2. No addData in intro routines (would corrupt trial 1's CSV row).
- * 3. Arrow-key input: use psychoJS.eventManager.getKeys() directly,
- *    matching Python's event.getKeys() pattern. No Keyboard component
- *    needed for the scale – avoids all waitForStart timing issues.
- * 4. Circle fill: use new util.Color('red') / new util.Color(CFG.bg_color)
- *    to set/clear fill. undefined does not clear fill in PsychoJS.
- * 5. Label x: -0.55 height units (≈ Python's norm -0.75), not -0.7
- *    which clips off-screen on 16:9.
- * 6. Scale overlaps question PNG (drawn after it, higher depth).
- ******************************************************************************/
-
-import { core, data, util, visual } from './lib/psychojs-2026.1.3.js';
-const { PsychoJS } = core;
-const { TrialHandler } = data;
-const { Scheduler } = util;
-
 
 // ─────────────────────────────────────────────
 //  1. CONFIGURATION
@@ -39,14 +9,13 @@ const CFG = {
   fix_min:                0.5,
   fix_max:                1.5,
 
-  debug:                  false,
-  debug_info_type:        'expert',
-
+  // randomization parameters 
   max_run:                2,
   question_order_max_run: 3,
 
   bg_color:               'black',
 
+  // text 
   font:                   'NanumGothic',
   text_height_big:        0.06,
   text_height_medium:     0.04,
@@ -54,8 +23,7 @@ const CFG = {
   text_bold:              true,
   text_color:             'white',
 
-  // Likert scale – height units, mirrors Python CFG exactly.
-  // Scale overlaps the question PNG (drawn on top of it).
+  // scale 
   scale_n:                7,
   circle_radius:          0.045,
   scale_y:               -0.15,
@@ -64,8 +32,7 @@ const CFG = {
   scale_x_left:          -0.42,
   scale_x_right:          0.42,
 
-  // Endorser label – height units on 16:9: horiz range ≈ ±0.89.
-  // Python norm -0.75 ≈ height -0.55.  label_y 0.42 = near top, safe.
+  // endorser label location
   label_x:               -0.55,
   label_y:                0.42,
 };
@@ -89,7 +56,13 @@ const QUESTION_DEFS = {
   credGen:    { img: 'stim/03_question/credibility_general.png', left: '전혀 믿지 않음',       right: '매우 신뢰함'    },
   preference: { img: 'stim/03_question/preference.png',          left: '전혀 선호하지 않음',   right: '매우 선호함'    },
 };
-
+const CSV_NAME_MAP = {
+  credEX:     'Credibility_EX',
+  credCON:    'Credibility_CON',
+  credPEER:   'Credibility_PEER',
+  credGen:    'Credibility_general',
+  preference: 'Preference',
+};
 const GPT_QUESTIONS   = ['credEX', 'credCON', 'credPEER', 'credGen', 'preference'];
 const OTHER_QUESTIONS = ['credGen', 'preference'];
 const ALL_Q_KEYS      = ['credEX', 'credCON', 'credPEER', 'credGen', 'preference'];
@@ -216,15 +189,17 @@ function trialResources(trial, infoType) {
 //  3. PSYCHOJS BOOTSTRAP
 // ─────────────────────────────────────────────
 
-const psychoJS = new PsychoJS({ debug: CFG.debug });
+const psychoJS = new PsychoJS({});
 
 const expInfo = {
-  'Participant ID': '',
-  'Peer 1': '',
-  'Peer 2': '',
-  'Peer 3': '',
-  'Peer 4': '',
+  '참가자 ID': '',
+  '친구 이름 1': '',
+  '친구 이름 2': '',
+  '친구 이름 3': '',
+  '친구 이름 4': '',
 };
+
+
 
 psychoJS.openWindow({
   fullscr:         true,
@@ -234,6 +209,7 @@ psychoJS.openWindow({
   backgroundImage: '',
   backgroundFit:   'none',
 });
+
 
 psychoJS.schedule(psychoJS.gui.DlgFromDict({
   dictionary: expInfo,
@@ -311,18 +287,38 @@ let _colRed, _colClear;
 
 async function updateInfo() {
   currentLoop = psychoJS.experiment;
+  const englishData = {
+    'Participant ID': expInfo['참가자 ID'],
+    'Peer 1':         expInfo['친구 이름 1'],
+    'Peer 2':         expInfo['친구 이름 2'],
+    'Peer 3':         expInfo['친구 이름 3'],
+    'Peer 4':         expInfo['친구 이름 4'],
+  };
+
+  // Overwrite expInfo with the English keys so the CSV uses them
+  Object.assign(expInfo, englishData);
+
+  // Clean up the Korean keys so they don't appear in the CSV
+  delete expInfo['참가자 ID'];
+  delete expInfo['친구 이름 1'];
+  delete expInfo['친구 이름 2'];
+  delete expInfo['친구 이름 3'];
+  delete expInfo['친구 이름 4'];
+
   expInfo['date']            = util.MonotonicClock.getDateStr();
   expInfo['expName']         = 'Endorsement Study';
   expInfo['psychopyVersion'] = '2026.1.3';
-  expInfo['OS']              = window.navigator.platform;
   expInfo['frameRate']       = psychoJS.window.getActualFrameRate();
   frameDur = (typeof expInfo['frameRate'] !== 'undefined')
     ? 1.0 / Math.round(expInfo['frameRate']) : 1.0 / 60.0;
   util.addInfoFromUrl(expInfo);
+
+
   psychoJS.experiment.dataFileName =
     `data/${expInfo['Participant ID']}_EndorsementStudy_${expInfo['date']}`;
-  psychoJS.experiment.field_separator = '\t';
+  
   return Scheduler.Event.NEXT;
+
 }
 
 
@@ -333,10 +329,6 @@ async function updateInfo() {
 async function experimentInit() {
   const win = psychoJS.window;
 
-  if (CFG.debug) {
-    CFG.product_dur = 1.0; CFG.info_dur = 1.0;
-    CFG.fix_min = 0.1;     CFG.fix_max  = 0.2;
-  }
 
   introClock    = new util.Clock();
   introFixClock = new util.Clock();
@@ -350,9 +342,6 @@ async function experimentInit() {
 
   // ── colour constants (built after psychoJS is ready) ─────────────────────
   _colRed   = new util.Color('red');
-  // "Clear" fill: use the background colour so unselected circles appear hollow.
-  // util.Color does NOT accept a 4-element RGBA array (alpha is unsupported);
-  // passing [0,0,0,0] causes "argument should be an array of numbers of length 3".
   _colClear = new util.Color(CFG.bg_color);
 
   // ── stimuli ───────────────────────────────────────────────────────────────
@@ -498,9 +487,7 @@ async function experimentInit() {
   );
   const nTrials  = trialRows.length;
   const infoTypes = Object.keys(INFO_CODE_MAP);
-  infoAssignment = CFG.debug
-    ? Array(nTrials).fill(CFG.debug_info_type)
-    : assignInfoTypesBalanced(trialRows, infoTypes, CFG.max_run);
+  infoAssignment = assignInfoTypesBalanced(trialRows, infoTypes, CFG.max_run);
 
   qOrdersGPT   = buildBalancedQuestionOrders(permutations(GPT_QUESTIONS),   nTrials, CFG.question_order_max_run);
   qOrdersOther = buildBalancedQuestionOrders(permutations(OTHER_QUESTIONS), nTrials, CFG.question_order_max_run);
@@ -649,10 +636,6 @@ function trialsLoopEnd() {
 
 // ─────────────────────────────────────────────
 //  10. PER-TRIAL ROUTINE
-//
-//  Phases: fix0 → product → fix1 → info → fix2
-//          → [question_init → question → interQ_fix] × N
-//          → done
 // ─────────────────────────────────────────────
 
 let _trialPhase, _phaseStartT, _phaseDuration, _trialClock;
@@ -718,11 +701,15 @@ function trialRoutineBegin(tIdx) {
     psychoJS.experiment.addData('LabelText',      _currentLabelText || '');
 
     allStimOff();
-    _phaseDuration = CFG.fix_min + Math.random() * (CFG.fix_max - CFG.fix_min);
-    _phaseStartT   = 0;
-    _trialPhase    = 'fix0';
+    _phaseStartT = 0;
+    _phaseDuration = CFG.product_dur;
+    _trialPhase = 'product';
+
+    productStim.setAutoDraw(true);
+    psychoJS.experiment.addData('product.started', 0);
+
     return Scheduler.Event.NEXT;
-  };
+    }; 
 }
 
 
@@ -733,20 +720,6 @@ function trialRoutineEachFrame(tIdx) {
     if (psychoJS.experiment.experimentEnded ||
         psychoJS.eventManager.getKeys({ keyList: ['escape'] }).length > 0)
       return quitPsychoJS('Escape pressed', false);
-
-    // ── fix0 ─────────────────────────────────────────────────────────────────
-    if (_trialPhase === 'fix0') {
-      if (!fixStim.autoDraw) fixStim.setAutoDraw(true);
-      if (t >= _phaseStartT + _phaseDuration) {
-        fixStim.setAutoDraw(false);
-        psychoJS.experiment.addData('fix0.started', _phaseStartT);
-        psychoJS.experiment.addData('fix0.stopped', t);
-        _phaseStartT = t; _phaseDuration = CFG.product_dur; _trialPhase = 'product';
-        productStim.setAutoDraw(true);
-        psychoJS.experiment.addData('product.started', _phaseStartT);
-      }
-      return Scheduler.Event.FLIP_REPEAT;
-    }
 
     // ── product ───────────────────────────────────────────────────────────────
     if (_trialPhase === 'product') {
@@ -860,10 +833,10 @@ function trialRoutineEachFrame(tIdx) {
             ? Math.floor(n / 2) : Math.min(n - 1, _qSelectedCircle + 1);
         } else if (name === 'return' && _qSelectedCircle !== null) {
           const score = _qSelectedCircle + 1;   // 1-based, matching Python
-          const rt    = (typeof k === 'object' && k.rt != null) ? k.rt : (t - _qStartT);
+          const rt = t - _qStartT;
           _trialResults[qKey] = { score, rt };
-          psychoJS.experiment.addData(`${qKey}_val`,     score);
-          psychoJS.experiment.addData(`${qKey}_RT`,      rt);
+          psychoJS.experiment.addData(CSV_NAME_MAP[qKey], score);
+          psychoJS.experiment.addData(`${CSV_NAME_MAP[qKey]}_RT`, rt);
           psychoJS.experiment.addData(`${qKey}.stopped`, t);
           _qResponseGiven = true;
         }
@@ -907,8 +880,8 @@ function trialRoutineEnd(tIdx) {
     // Pad unanswered questions with empty strings for clean CSV columns
     ALL_Q_KEYS.forEach(q => {
       if (!_trialResults[q]) {
-        psychoJS.experiment.addData(`${q}_val`, '');
-        psychoJS.experiment.addData(`${q}_RT`,  '');
+        psychoJS.experiment.addData(CSV_NAME_MAP[q], '');
+        psychoJS.experiment.addData(`${CSV_NAME_MAP[q]}_RT`, '');
       }
     });
 
