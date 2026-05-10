@@ -668,27 +668,44 @@ function updateCircleFills(selectedIdx) {
 
 function trialRoutineBegin(tIdx) {
   return async function () {
+
     trialIndex       = tIdx + 1;
     _currentTrial    = trialRows[tIdx];
     _currentInfoType = infoAssignment[tIdx];
     _trialClock      = new util.Clock();
     _trialResults    = {};
 
-    const peerName    = _currentInfoType === 'peer'
-      ? peerNames[Math.floor(Math.random() * peerNames.length)] : null;
+    const peerName = _currentInfoType === 'peer'
+      ? peerNames[Math.floor(Math.random() * peerNames.length)]
+      : null;
+
     const expertLabel = _currentInfoType === 'expert'
-      ? (expertMap[normStr(_currentTrial.product_ENG)] || null) : null;
-    _currentLabelText = resolveLabel(_currentInfoType, peerName, expertLabel);
+      ? (expertMap[normStr(_currentTrial.product_ENG)] || null)
+      : null;
+
+    _currentLabelText = resolveLabel(
+      _currentInfoType,
+      peerName,
+      expertLabel
+    );
 
     if (_currentInfoType === 'gpt') {
-      _currentQOrder = [...qOrdersGPT[gptCounter % qOrdersGPT.length]]; gptCounter++;
+      _currentQOrder = [...qOrdersGPT[gptCounter % qOrdersGPT.length]];
+      gptCounter++;
     } else {
-      _currentQOrder = [...qOrdersOther[otherCounter % qOrdersOther.length]]; otherCounter++;
+      _currentQOrder = [...qOrdersOther[otherCounter % qOrdersOther.length]];
+      otherCounter++;
     }
+
     _qIdx = 0;
 
-    productStim.setImage(`stim/01_product/${_currentTrial.product_ENG}.png`);
-    infoStim.setImage(`stim/02_information/${_currentTrial.product_ENG}_${INFO_CODE_MAP[_currentInfoType]}.png`);
+    productStim.setImage(
+      `stim/01_product/${_currentTrial.product_ENG}.png`
+    );
+
+    infoStim.setImage(
+      `stim/02_information/${_currentTrial.product_ENG}_${INFO_CODE_MAP[_currentInfoType]}.png`
+    );
 
     psychoJS.experiment.addData('TrialNumber',    trialIndex);
     psychoJS.experiment.addData('product_ENG',    _currentTrial.product_ENG);
@@ -701,15 +718,17 @@ function trialRoutineBegin(tIdx) {
     psychoJS.experiment.addData('LabelText',      _currentLabelText || '');
 
     allStimOff();
+
     _phaseStartT = 0;
     _phaseDuration = CFG.product_dur;
     _trialPhase = 'product';
 
     productStim.setAutoDraw(true);
+
     psychoJS.experiment.addData('product.started', 0);
 
     return Scheduler.Event.NEXT;
-    }; 
+  };
 }
 
 
