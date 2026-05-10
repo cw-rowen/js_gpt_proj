@@ -214,3 +214,14 @@ function importConditions(currentLoop) {
     return Scheduler.Event.NEXT;
   };
 }
+function trialsLoopEnd() {
+  return async function () {
+    // This tells PsychoJS the loop is over
+    currentLoop.finished = true;
+    
+    // Optional: Add any logic here you want to run right after the trials finish
+    console.log("Trials loop has ended successfully.");
+
+    return Scheduler.Event.NEXT;
+  };
+}
