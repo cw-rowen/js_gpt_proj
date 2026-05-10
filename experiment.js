@@ -151,7 +151,7 @@ psychoJS.start({
   expName: 'Endorsement Study', 
   expInfo, 
   resources: [
-    { name: 'conditions.csv', path: 'conditions.csv' },
+    { name: 'product_list.csv', path: 'product_list.csv' },
     { name: 'expert_labels.csv', path: 'expert_labels.csv' },
     { name: 'stim/00_fixation/fixation.png', path: 'stim/00_fixation/fixation.png' }
   ] 
