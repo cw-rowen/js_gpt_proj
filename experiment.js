@@ -46,8 +46,8 @@ const CFG = {
   desc_y:                -0.33,
   scale_x_left:          -0.42,
   scale_x_right:          0.42,
-  label_x:               -0.6,
-  label_y:                0.42,
+  label_x:               -0.7,
+  label_y:               -0.38,
 };
 
 const INFO_CODE_MAP = {
@@ -923,10 +923,21 @@ const ALL_PRODUCT_RESOURCES = [
   { name: 'stim/02_information/wireless_keyboard_04.png', path: 'stim/02_information/wireless_keyboard_04.png' },
 ];
 
-function backgroundDownloadAll() {
-  psychoJS.serverManager.downloadResources(ALL_PRODUCT_RESOURCES).catch(e => {
-    console.warn('Background preload partial failure (non-fatal):', e);
-  });
+// Download images in trial order, 2 at a time (product + info for each trial).
+// This means trial 1's images are ready almost immediately, trial 2 next, etc.
+// Much faster perceived start than queuing all 320 in one batch.
+async function backgroundDownloadAll() {
+  for (let i = 0; i < trialRows.length; i++) {
+    const trial    = trialRows[i];
+    const infoType = infoAssignment[i];
+    try {
+      await psychoJS.serverManager.downloadResources(trialResources(trial, infoType));
+    } catch (e) {
+      console.warn(`Background preload failed for trial ${i + 1}:`, e);
+    }
+    // Yield to browser between each trial pair so the UI stays responsive
+    await new Promise(r => setTimeout(r, 0));
+  }
 }
 
 function trialResources(trial, infoType) {
@@ -1061,9 +1072,9 @@ async function experimentInit() {
     bold:        CFG.text_bold,
     alignText:   'left',
     anchorHoriz: 'left',
-    anchorVert:  'top',
+    anchorVert:  'bottom',
     units:       'height',
-    wrapWidth:   0.9,
+    wrapWidth:   1.4,
   });
 
   // ── question image (path swapped per question) ──
@@ -1581,9 +1592,11 @@ function trialRoutineEachFrame(tIdx) {
       scaleKb.keys     = undefined;
       scaleKb.rt       = undefined;
       scaleKb._allKeys = [];
+      scaleKb.status   = PsychoJS.Status.NOT_STARTED;
       psychoJS.window.callOnFlip(() => { scaleKb.clock.reset(); });
       psychoJS.window.callOnFlip(() => { scaleKb.start(); });
       psychoJS.window.callOnFlip(() => { scaleKb.clearEvents(); });
+      scaleKb.status   = PsychoJS.Status.STARTED;
 
       _qStartT    = t;
       _trialPhase = 'question';
