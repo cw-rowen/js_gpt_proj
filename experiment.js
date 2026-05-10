@@ -408,8 +408,6 @@ async function experimentInit() {
   // ── Likert scale circles + numbers ──────────
   const xs        = linspace(CFG.scale_x_left, CFG.scale_x_right, CFG.scale_n);
   const colWhite  = new util.Color(CFG.text_color);
-  const colRed    = new util.Color('red');
-  const colClear  = new util.Color([0, 0, 0, 0]); // transparent fill
 
   for (let i = 0; i < CFG.scale_n; i++) {
     scale_circles.push(new visual.Polygon({
@@ -418,7 +416,7 @@ async function experimentInit() {
       radius:    CFG.circle_radius,
       lineColor: colWhite,
       lineWidth: 4,
-      fillColor: colClear,
+      fillColor: undefined,
       pos:       [xs[i], CFG.scale_y],
       units:     'height',
     }));
@@ -686,7 +684,7 @@ let _trialResults;      // { credEX:{score,rt}, ... }
 
 // Pre-build Color objects once to avoid per-frame allocation
 const _colRed   = new util.Color('red');
-const _colClear = new util.Color([0, 0, 0, 0]);
+const _colClear = undefined;  // undefined = no fill (outline only)
 
 // Module-level frame variables (mirrors samplesetup.js pattern)
 var t;
