@@ -598,6 +598,9 @@ function finalRoutineBegin() {
     finalClock = new util.Clock();
     finalClock.reset();
 
+    // ← ADD THIS: clear the fixation cross left on by trialRoutineEnd
+    if (fixStim) fixStim.setAutoDraw(false);
+
     finalStim = new visual.ImageStim({
       win: psychoJS.window,
       name: 'finalStim',
@@ -1005,6 +1008,12 @@ function trialRoutineEnd(tIdx) {
 
 async function quitPsychoJS(message, isCompleted) {
   if (psychoJS.experiment.isEntryEmpty()) psychoJS.experiment.nextEntry();
+
+  if (document.fullscreenElement && document.exitFullscreen) {
+    document.exitFullscreen().catch(() => {});
+  }
+  document.body.style.cursor = 'auto';  // ← restore cursor
+
   psychoJS.window.close();
   psychoJS.quit({ message, isCompleted });
   return Scheduler.Event.QUIT;
