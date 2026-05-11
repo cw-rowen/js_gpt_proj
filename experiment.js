@@ -493,7 +493,7 @@ async function experimentInit() {
   // ── shuffle + assign ──────────────────────────────────────────────────────
   trialRows = constrainedShuffle(
     productRows, r => `${r.genre}|${r.classification}|${r.price_range}`, CFG.max_run
-  );
+  ).slice(0, 3);
   const nTrials  = trialRows.length;
   const infoTypes = Object.keys(INFO_CODE_MAP);
   infoAssignment = assignInfoTypesBalanced(trialRows, infoTypes, CFG.max_run);
