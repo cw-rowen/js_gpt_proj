@@ -493,7 +493,7 @@ async function experimentInit() {
   // ── shuffle + assign ──────────────────────────────────────────────────────
   trialRows = constrainedShuffle(
     productRows, r => `${r.genre}|${r.classification}|${r.price_range}`, CFG.max_run
-  ).slice(0, 3);
+  );
   const nTrials  = trialRows.length;
   const infoTypes = Object.keys(INFO_CODE_MAP);
   infoAssignment = assignInfoTypesBalanced(trialRows, infoTypes, CFG.max_run);
@@ -627,7 +627,7 @@ function finalRoutineEachFrame() {
       return quitPsychoJS('Escape pressed', false);
 
     // Auto-advance after FINAL_DUR seconds — no keypress needed
-    if (t >= 2.0) return Scheduler.Event.NEXT;
+    if (t >= 3.0) return Scheduler.Event.NEXT;
 
     return Scheduler.Event.FLIP_REPEAT;
   };
