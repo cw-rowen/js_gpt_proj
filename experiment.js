@@ -597,7 +597,6 @@ function finalRoutineBegin() {
     t = 0;
     finalClock = new util.Clock();
     finalClock.reset();
-    continueRoutine = true;
 
     finalStim = new visual.ImageStim({
       win: psychoJS.window,
@@ -605,12 +604,7 @@ function finalRoutineBegin() {
       image: 'stim/04_intro/final.png',
       pos: [0, 0], units: 'height', anchor: 'center',
     });
-
-    finalKey = new core.Keyboard({ psychoJS, clock: new util.Clock(), waitForStart: true });
-    finalKey.keys = undefined; finalKey.rt = undefined; finalKey._allKeys = [];
-
-    finalComponents = [finalStim, finalKey];
-    for (const c of finalComponents) if ('status' in c) c.status = PsychoJS.Status.NOT_STARTED;
+    finalStim.status = PsychoJS.Status.NOT_STARTED;
 
     return Scheduler.Event.NEXT;
   };
@@ -621,32 +615,25 @@ function finalRoutineEachFrame() {
     t = finalClock.getTime();
 
     if (t >= 0 && finalStim.status === PsychoJS.Status.NOT_STARTED) {
-      finalStim.tStart = t; finalStim.status = PsychoJS.Status.STARTED;
+      finalStim.tStart = t;
+      finalStim.status = PsychoJS.Status.STARTED;
       finalStim.setAutoDraw(true);
-    }
-    if (t >= 0 && finalKey.status === PsychoJS.Status.NOT_STARTED) {
-      finalKey.tStart = t; finalKey.status = PsychoJS.Status.STARTED;
-      psychoJS.window.callOnFlip(() => { finalKey.clock.reset(); finalKey.start(); finalKey.clearEvents(); });
-    }
-    if (finalKey.status === PsychoJS.Status.STARTED) {
-      const keys = finalKey.getKeys({ keyList: ['space', 'return', 'escape'], waitRelease: false });
-      finalKey._allKeys = finalKey._allKeys.concat(keys);
-      if (finalKey._allKeys.length > 0) {
-        continueRoutine = false;
-      }
     }
     if (psychoJS.experiment.experimentEnded ||
         psychoJS.eventManager.getKeys({ keyList: ['escape'] }).length > 0)
       return quitPsychoJS('Escape pressed', false);
-    if (!continueRoutine) return Scheduler.Event.NEXT;
+
+    // Auto-advance after FINAL_DUR seconds — no keypress needed
+    if (t >= 2.0) return Scheduler.Event.NEXT;
+
     return Scheduler.Event.FLIP_REPEAT;
   };
 }
 
+
 function finalRoutineEnd() {
   return async function () {
-    for (const c of finalComponents) if (typeof c.setAutoDraw === 'function') c.setAutoDraw(false);
-    finalKey.stop();
+    finalStim.setAutoDraw(false);
     return Scheduler.Event.NEXT;
   };
 }
