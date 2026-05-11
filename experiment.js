@@ -243,6 +243,9 @@ const trialsLoopScheduler = new Scheduler(psychoJS);
 flowScheduler.add(trialsLoopBegin(trialsLoopScheduler));
 flowScheduler.add(trialsLoopScheduler);
 flowScheduler.add(trialsLoopEnd());
+flowScheduler.add(finalRoutineBegin());     
+flowScheduler.add(finalRoutineEachFrame());
+flowScheduler.add(finalRoutineEnd());
 flowScheduler.add(quitPsychoJS, '', true);
 dialogCancelScheduler.add(quitPsychoJS, '', false);
 
@@ -259,6 +262,7 @@ psychoJS.start({
     { name: 'stim/03_question/credibility_PEER.png',    path: 'stim/03_question/credibility_PEER.png'    },
     { name: 'stim/03_question/credibility_general.png', path: 'stim/03_question/credibility_general.png' },
     { name: 'stim/03_question/preference.png',          path: 'stim/03_question/preference.png'          },
+    {  name: 'stim/04_intro/final.png',                 path: 'stim/04_intro/final.png'                  },
     { name: 'default.png', path: 'https://pavlovia.org/assets/default/default.png' },
   ],
 });
@@ -580,6 +584,72 @@ function introRoutineEnd() {
   };
 }
 
+
+// ─────────────────────────────────────────────
+//  7b. FINAL SCREEN ROUTINE
+// ─────────────────────────────────────────────
+
+let finalClock, finalStim, finalKey;
+let finalComponents;
+
+function finalRoutineBegin() {
+  return async function () {
+    t = 0;
+    finalClock = new util.Clock();
+    finalClock.reset();
+    continueRoutine = true;
+
+    finalStim = new visual.ImageStim({
+      win: psychoJS.window,
+      name: 'finalStim',
+      image: 'stim/04_intro/final.png',
+      pos: [0, 0], units: 'height', anchor: 'center',
+    });
+
+    finalKey = new core.Keyboard({ psychoJS, clock: new util.Clock(), waitForStart: true });
+    finalKey.keys = undefined; finalKey.rt = undefined; finalKey._allKeys = [];
+
+    finalComponents = [finalStim, finalKey];
+    for (const c of finalComponents) if ('status' in c) c.status = PsychoJS.Status.NOT_STARTED;
+
+    return Scheduler.Event.NEXT;
+  };
+}
+
+function finalRoutineEachFrame() {
+  return async function () {
+    t = finalClock.getTime();
+
+    if (t >= 0 && finalStim.status === PsychoJS.Status.NOT_STARTED) {
+      finalStim.tStart = t; finalStim.status = PsychoJS.Status.STARTED;
+      finalStim.setAutoDraw(true);
+    }
+    if (t >= 0 && finalKey.status === PsychoJS.Status.NOT_STARTED) {
+      finalKey.tStart = t; finalKey.status = PsychoJS.Status.STARTED;
+      psychoJS.window.callOnFlip(() => { finalKey.clock.reset(); finalKey.start(); finalKey.clearEvents(); });
+    }
+    if (finalKey.status === PsychoJS.Status.STARTED) {
+      const keys = finalKey.getKeys({ keyList: ['space', 'return', 'escape'], waitRelease: false });
+      finalKey._allKeys = finalKey._allKeys.concat(keys);
+      if (finalKey._allKeys.length > 0) {
+        continueRoutine = false;
+      }
+    }
+    if (psychoJS.experiment.experimentEnded ||
+        psychoJS.eventManager.getKeys({ keyList: ['escape'] }).length > 0)
+      return quitPsychoJS('Escape pressed', false);
+    if (!continueRoutine) return Scheduler.Event.NEXT;
+    return Scheduler.Event.FLIP_REPEAT;
+  };
+}
+
+function finalRoutineEnd() {
+  return async function () {
+    for (const c of finalComponents) if (typeof c.setAutoDraw === 'function') c.setAutoDraw(false);
+    finalKey.stop();
+    return Scheduler.Event.NEXT;
+  };
+}
 
 // ─────────────────────────────────────────────
 //  8. INITIAL 3-SECOND FIXATION
