@@ -251,10 +251,6 @@ psychoJS.openWindow({
   backgroundFit:   'none',
 });
 
-// JS only: hide mouse cursor
-document.body.style.cursor = 'none';
-psychoJS.window._renderer.view.style.cursor = 'none';
-
 // show the participant info dialog (equivalent to Python gui.DlgFromDict())
 psychoJS.schedule(psychoJS.gui.DlgFromDict({
   dictionary: expInfo,
@@ -393,6 +389,10 @@ async function updateInfo() {
 async function experimentInit() {
   const win = psychoJS.window;
 
+  // JS only: hide mouse cursor
+  document.body.style.cursor = 'none';
+  psychoJS.window._renderer.view.style.cursor = 'none';
+  
   // initialise clocks (equivalent to Python's global_clock = core.Clock())
   introClock    = new util.Clock();
   introFixClock = new util.Clock();
