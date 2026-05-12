@@ -462,13 +462,24 @@ async function experimentInit() {
     depth: 0,
   });
 
-  // pause screen image shown when ESC is pressed during a trial
+  // pause screen image shown when fullscreen is interrupted
   pauseStim = new visual.ImageStim({
     win, name: 'pauseStim',
     image: 'stim/04_intro/pause.png',
     pos: [0, 0], units: 'height', anchor: 'center',
     depth: -2,    // in front of all trial stims
   });
+
+  document.addEventListener('fullscreenchange', () => {
+  if (!document.fullscreenElement &&
+      !_escPending &&
+      psychoJS.experiment &&
+      !psychoJS.experiment.experimentEnded) {
+    _escPending = true;
+    allStimOff();
+    pauseStim.setAutoDraw(true);
+  }
+});
 
   // Likert scale (equivalent to Python class LikertScale)
   const xs       = numPyLinspace(CFG.scale_x_left, CFG.scale_x_right, CFG.scale_n);
@@ -629,17 +640,11 @@ function introRoutineEachFrame() {
       psychoJS.window.callOnFlip(() => { introKey.clock.reset(); introKey.start(); introKey.clearEvents(); });
     }
     if (introKey.status === PsychoJS.Status.STARTED) {
-      const keys = introKey.getKeys({ keyList: ['space', 'return', 'escape'], waitRelease: false });
+      const keys = introKey.getKeys({ keyList: ['space', 'return'], waitRelease: false });
       introKey._allKeys = introKey._allKeys.concat(keys);
-      if (introKey._allKeys.length > 0) {
-        const last = introKey._allKeys[introKey._allKeys.length - 1];
-        if (last.name === 'escape') return quitPsychoJS('Escape pressed', false);
-        continueRoutine = false;
-      }
+      if (introKey._allKeys.length > 0) continueRoutine = false;
     }
-    if (psychoJS.experiment.experimentEnded ||
-        psychoJS.eventManager.getKeys({ keyList: ['escape'] }).length > 0)
-      return quitPsychoJS('Escape pressed', false);
+    if (psychoJS.experiment.experimentEnded) return quitPsychoJS('Experiment ended', false);
     if (!continueRoutine) return Scheduler.Event.NEXT;
     return Scheduler.Event.FLIP_REPEAT;
   };
@@ -689,10 +694,7 @@ function finalRoutineEachFrame() {
       finalStim.status = PsychoJS.Status.STARTED;
       finalStim.setAutoDraw(true);
     }
-    if (psychoJS.experiment.experimentEnded ||
-        psychoJS.eventManager.getKeys({ keyList: ['escape'] }).length > 0)
-      return quitPsychoJS('Escape pressed', false);
-
+    if (psychoJS.experiment.experimentEnded) return quitPsychoJS('Experiment ended', false);
     // auto-advance after 3.0 seconds — no keypress needed to close screen
     if (t >= 3.0) return Scheduler.Event.NEXT;
 
@@ -894,42 +896,32 @@ function trialRoutineEachFrame(tIdx) {
     if (psychoJS.experiment.experimentEnded)
       return quitPsychoJS('Experiment ended', false);
 
-    // ESC pressed: enter pause 
-    if (!_escPending &&
-      psychoJS.eventManager.getKeys({ keyList: ['escape'] }).length > 0) {
-      _escPending = true;
-      allStimOff();
-      pauseStim.setAutoDraw(true);
-      return Scheduler.Event.FLIP_REPEAT;
-    }
-
-    // while paused: wait for Y (quit) or N (resume)  
+    // while paused: wait for Y (quit) or N (resume)
     if (_escPending) {
       const confirm = psychoJS.eventManager.getKeys({ keyList: ['y', 'n'] });
       for (const k of confirm) {
         const name = k.name || k;
         if (name === 'y') return quitPsychoJS('사용자 종료', false);
-          if (name === 'n') {
-            _escPending = false;
-            pauseStim.setAutoDraw(false);
-            allStimOff();
-            _trialClock.reset();
-            _phaseStartT     = 0;
-            _phaseDuration   = CFG.product_dur;
-            _trialPhase      = 'product';
-            _qIdx            = 0;
-            _qSelectedCircle = null;
-            _trialResults    = {}; 
-            psychoJS.experiment.addData('product.restarted', 0);
-            productStim.setAutoDraw(true);
-            if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
-              document.documentElement.requestFullscreen().catch(() => {});
-            }
+        if (name === 'n') {
+          pauseStim.setAutoDraw(false);
+          allStimOff();
+          _trialClock.reset();
+          _phaseStartT     = 0;
+          _phaseDuration   = CFG.product_dur;
+          _trialPhase      = 'product';
+          _qIdx            = 0;
+          _qSelectedCircle = null;
+          _trialResults    = {};
+          psychoJS.experiment.addData('product.restarted', 0);
+          productStim.setAutoDraw(true);
+          if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+            document.documentElement.requestFullscreen().catch(() => {});
           }
+          _escPending = false;
         }
+      }
       return Scheduler.Event.FLIP_REPEAT;
     }
-
 
     // product (equivalent to Python function show_image_timed())
     if (_trialPhase === 'product') {
@@ -1090,7 +1082,6 @@ function trialRoutineEachFrame(tIdx) {
 }
 
 // finalize trial's CSV row and advance to next entry
-//    (equivalent to Python functions results_row.append() & flush_csvs())
 function trialRoutineEnd(tIdx) {
   return async function () {
 
