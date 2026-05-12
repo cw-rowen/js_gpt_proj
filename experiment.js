@@ -74,10 +74,10 @@ const OTHER_QUESTIONS = ['credGen', 'preference'];
 //  all question options and column names, listed for CSV creation later
 const ALL_Q_KEYS      = ['credEX', 'credCON', 'credPEER', 'credGen', 'preference'];
 const CSV_NAME_MAP = {
-  credEX:     'Credibility_EX',
-  credCON:    'Credibility_CON',
-  credPEER:   'Credibility_PEER',
-  credGen:    'Credibility_general',
+  credEX:     'credExpert',
+  credCON:    'credConsensus',
+  credPEER:   'credPeer',
+  credGen:    'credGeneral',
   preference: 'Preference',
 };
 
@@ -379,7 +379,6 @@ async function updateInfo() {
   // set output CSV filename (equivalent to Python function out_dir)
   psychoJS.experiment.dataFileName =
     `data/${expInfo['Participant ID']}_GPTProj_${expInfo['date']}`;
-  
   return Scheduler.Event.NEXT;
 
 }
@@ -866,7 +865,7 @@ function trialRoutineBegin(tIdx) {
     psychoJS.experiment.addData('product_KOR',    _currentTrial.product_KOR);
     psychoJS.experiment.addData('genre',          _currentTrial.genre);
     psychoJS.experiment.addData('classification', _currentTrial.classification);
-    psychoJS.experiment.addData('price_range',    _currentTrial.price_range);
+    psychoJS.experiment.addData('PriceRange',    _currentTrial.price_range);
     psychoJS.experiment.addData('InfoType',       _currentInfoType);
     psychoJS.experiment.addData('Q_Order',        _currentQOrder.join('-'));
     psychoJS.experiment.addData('LabelText',      _currentLabelText || '');
@@ -912,7 +911,7 @@ function trialRoutineEachFrame(tIdx) {
           _qIdx            = 0;
           _qSelectedCircle = null;
           _trialResults    = {};
-          psychoJS.experiment.addData('product.restarted', 0);
+          psychoJS.experiment.addData('product.restarted', 1);
           productStim.setAutoDraw(true);
           if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
             document.documentElement.requestFullscreen().catch(() => {});
@@ -956,11 +955,6 @@ function trialRoutineEachFrame(tIdx) {
        infoStim.setAutoDraw(true);
 
        psychoJS.experiment.addData('info.started', _phaseStartT);
-
-       psychoJS.experiment.addData(
-         'info.fname',
-         `stim/02_information/${_currentTrial.product_ENG}_${INFO_CODE_MAP[_currentInfoType]}.png`
-       );
   }
 
   return Scheduler.Event.FLIP_REPEAT;
@@ -1015,7 +1009,6 @@ function trialRoutineEachFrame(tIdx) {
       psychoJS.eventManager.clearEvents({ eventType: 'keyboard' });
 
       _trialPhase = 'question';
-      psychoJS.experiment.addData(`${qKey}.started`, _qStartT);
       return Scheduler.Event.FLIP_REPEAT;
     }
 
@@ -1045,7 +1038,6 @@ function trialRoutineEachFrame(tIdx) {
           _trialResults[qKey] = { score, rt };
           psychoJS.experiment.addData(CSV_NAME_MAP[qKey], score);
           psychoJS.experiment.addData(`${CSV_NAME_MAP[qKey]}_RT`, rt);
-          psychoJS.experiment.addData(`${qKey}.stopped`, t);
           _qResponseGiven = true;
         }
       }
