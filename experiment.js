@@ -89,7 +89,7 @@ const CSV_NAME_MAP = {
 // normalize a string
 function normStr(s) { return String(s).trim().toLowerCase().replace(/\s+/g, ' '); }
 
-// randomize info order (also accounts for is_valid_order)
+// validate randomized info order (also accounts for is_valid_order)
 function isValidRun(seq, maxRun) {
   let run = 1;
   for (let i = 1; i < seq.length; i++) {
@@ -326,6 +326,7 @@ psychoJS.experimentLogger.setLevel(core.Logger.ServerLevel.EXP);
 let globalClock, routineTimer, currentLoop, frameDur;   // clocks and loop reference 
 let introClock, introStim, introKey, introFixClock;     // intro-specific clocks and stim
 let fixStim, productStim, infoStim, labelStim, questionStim;    // shared stimuli reused every trial 
+let escConfirmStim;     // escape confirmation screen text
 let scale_circles = [], scale_numbers = [];     // Likert scale visual components 
 let scale_leftDesc = null, scale_rightDesc = null;
 
@@ -459,6 +460,21 @@ async function experimentInit() {
     depth: 0,
   });
 
+  // escape confirmation screen text
+  escConfirmStim = new visual.TextStim({
+    win, name: 'escConfirmStim',
+    text: '실험을 종료하시겠습니까?\n\nY = 종료   N = 계속',
+    pos: [0, 0],
+    height: CFG.text_height_big,
+    color: new util.Color(CFG.text_color),
+    font: CFG.font,
+    bold: CFG.text_bold,
+    alignText: 'center',
+    units: 'height',
+    wrapWidth: 1.5,
+    depth: -2,
+  });
+
   // Likert scale (equivalent to Python class LikertScale)
   const xs       = numPyLinspace(CFG.scale_x_left, CFG.scale_x_right, CFG.scale_n);
   const colWhite = new util.Color(CFG.text_color);
@@ -535,7 +551,7 @@ async function experimentInit() {
   // validate required columns (equivalent to Python missing_cols check)
   const reqCols     = ['product_ENG', 'product_KOR', 'genre', 'classification', 'price_range'];
   const missingCols = reqCols.filter(c => !(c in productRows[0]));
-   // warning for missing products 
+   // error for missing products 
   if (missingCols.length) throw new Error(`product_list.csv missing: ${missingCols}`);
   // warning for missing expert labels  
   const missingExperts = productRows
@@ -647,8 +663,7 @@ function introRoutineEnd() {
 //  FINAL ROUTINE
 // ─────────────────────────────────────────────
 
-let finalClock, finalStim, finalKey;
-let finalComponents;
+let finalClock, finalStim,;
 
 function finalRoutineBegin() {
   return async function () {
@@ -656,7 +671,6 @@ function finalRoutineBegin() {
     finalClock = new util.Clock();
     finalClock.reset();
 
-    // ← ADD THIS: clear the fixation cross left on by trialRoutineEnd
     if (fixStim) fixStim.setAutoDraw(false);
 
     finalStim = new visual.ImageStim({
@@ -842,7 +856,7 @@ function trialRoutineBegin(tIdx) {
 
     _qIdx = 0;
 
-    // swap in trial's product and info images (equivalent to Python function results_rows.append(dict))
+    // swap in trial's product and info images
     productStim.setImage(
       `stim/01_product/${_currentTrial.product_ENG}.png`
     );
@@ -867,6 +881,7 @@ function trialRoutineBegin(tIdx) {
     _phaseStartT = 0;
     _phaseDuration = CFG.product_dur;
     _trialPhase = 'product';
+    _escPending = false;
 
     productStim.setAutoDraw(true);
 
@@ -883,9 +898,29 @@ function trialRoutineEachFrame(tIdx) {
   return async function () {
     t = _trialClock.getTime();
 
-    if (psychoJS.experiment.experimentEnded ||
-        psychoJS.eventManager.getKeys({ keyList: ['escape'] }).length > 0)
-      return quitPsychoJS('Escape pressed', false);
+    if (psychoJS.experiment.experimentEnded)
+      return quitPsychoJS('Experiment ended', false);
+
+    if (!_escPending &&
+      psychoJS.eventManager.getKeys({ keyList: ['escape'] }).length > 0) {
+      _escPending = true;
+      allStimOff();
+      escConfirmStim.setAutoDraw(true);   // show the prompt
+      return Scheduler.Event.FLIP_REPEAT;
+    }
+
+    if (_escPending) {
+      const confirm = psychoJS.eventManager.getKeys({ keyList: ['y', 'n'] });
+      for (const k of confirm) {
+      const name = k.name || k;
+      if (name === 'y') return quitPsychoJS('Escape pressed', false);
+      if (name === 'n') {
+        _escPending = false;
+        escConfirmStim.setAutoDraw(false);   // hide the prompt and resume
+      }
+    }
+    return Scheduler.Event.FLIP_REPEAT;
+    }
 
     // product (equivalent to Python function show_image_timed())
     if (_trialPhase === 'product') {
@@ -990,13 +1025,10 @@ function trialRoutineEachFrame(tIdx) {
       const n    = CFG.scale_n;
 
       const pressed = psychoJS.eventManager.getKeys({
-        keyList: ['left', 'right', 'return', 'escape'],
+        keyList: ['left', 'right', 'return'],
       });
 
       for (const k of pressed) {
-        if (k === 'escape' || k.name === 'escape')
-          return quitPsychoJS('Escape pressed', false);
-
         const name = k.name || k;
 
         if (name === 'left') {
