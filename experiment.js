@@ -303,6 +303,7 @@ psychoJS.start({
     { name: 'expert_labels.csv',                        path: 'expert_labels.csv'                        },
     { name: 'stim/00_fixation/fixation.png',            path: 'stim/00_fixation/fixation.png'            },
     { name: 'stim/04_intro/intro.png',                  path: 'stim/04_intro/intro.png'                  },
+    { name: 'stim/04_intro/pause.png',                  path: 'stim/04_intro/pause.png'                  },
     { name: 'stim/03_question/credibility_EX.png',      path: 'stim/03_question/credibility_EX.png'      },
     { name: 'stim/03_question/credibility_CON.png',     path: 'stim/03_question/credibility_CON.png'     },
     { name: 'stim/03_question/credibility_PEER.png',    path: 'stim/03_question/credibility_PEER.png'    },
@@ -326,7 +327,8 @@ psychoJS.experimentLogger.setLevel(core.Logger.ServerLevel.EXP);
 let globalClock, routineTimer, currentLoop, frameDur;   // clocks and loop reference 
 let introClock, introStim, introKey, introFixClock;     // intro-specific clocks and stim
 let fixStim, productStim, infoStim, labelStim, questionStim;    // shared stimuli reused every trial 
-let escConfirmStim;     // escape confirmation screen text
+let pauseStim;          // pause screen image (stim/04_intro/pause.png)
+let _escPending = false; // true while pause screen is visible
 let scale_circles = [], scale_numbers = [];     // Likert scale visual components 
 let scale_leftDesc = null, scale_rightDesc = null;
 
@@ -460,19 +462,12 @@ async function experimentInit() {
     depth: 0,
   });
 
-  // escape confirmation screen text
-  escConfirmStim = new visual.TextStim({
-    win, name: 'escConfirmStim',
-    text: '실험을 종료하시겠습니까?\n\nY = 종료   N = 계속',
-    pos: [0, 0],
-    height: CFG.text_height_big,
-    color: new util.Color(CFG.text_color),
-    font: CFG.font,
-    bold: CFG.text_bold,
-    alignText: 'center',
-    units: 'height',
-    wrapWidth: 1.5,
-    depth: -2,
+  // pause screen image shown when ESC is pressed during a trial
+  pauseStim = new visual.ImageStim({
+    win, name: 'pauseStim',
+    image: 'stim/04_intro/pause.png',
+    pos: [0, 0], units: 'height', anchor: 'center',
+    depth: -2,    // in front of all trial stims
   });
 
   // Likert scale (equivalent to Python class LikertScale)
@@ -663,7 +658,7 @@ function introRoutineEnd() {
 //  FINAL ROUTINE
 // ─────────────────────────────────────────────
 
-let finalClock, finalStim,;
+let finalClock, finalStim;
 
 function finalRoutineBegin() {
   return async function () {
@@ -713,6 +708,7 @@ function finalRoutineEnd() {
   };
 }
 
+
 // ─────────────────────────────────────────────
 //  INITIAL 3-SECOND FIXATION
 // ─────────────────────────────────────────────
@@ -737,9 +733,6 @@ function introFixRoutineEachFrame() {
     if (t >= 0 && fixStim.status === PsychoJS.Status.NOT_STARTED) {
       fixStim.tStart = t; fixStim.status = PsychoJS.Status.STARTED; fixStim.setAutoDraw(true);
     }
-    if (psychoJS.experiment.experimentEnded ||
-        psychoJS.eventManager.getKeys({ keyList: ['escape'] }).length > 0)
-      return quitPsychoJS('Escape pressed', false);
     if (continueRoutine && routineTimer.getTime() > 0) return Scheduler.Event.FLIP_REPEAT;
     fixStim.setAutoDraw(false); fixStim.status = PsychoJS.Status.FINISHED;
     routineTimer.reset();
@@ -881,7 +874,7 @@ function trialRoutineBegin(tIdx) {
     _phaseStartT = 0;
     _phaseDuration = CFG.product_dur;
     _trialPhase = 'product';
-    _escPending = false;
+    _escPending = false;   // reset pause state for every new trial
 
     productStim.setAutoDraw(true);
 
@@ -901,26 +894,42 @@ function trialRoutineEachFrame(tIdx) {
     if (psychoJS.experiment.experimentEnded)
       return quitPsychoJS('Experiment ended', false);
 
+    // ESC pressed: enter pause 
     if (!_escPending &&
       psychoJS.eventManager.getKeys({ keyList: ['escape'] }).length > 0) {
       _escPending = true;
       allStimOff();
-      escConfirmStim.setAutoDraw(true);   // show the prompt
+      pauseStim.setAutoDraw(true);
       return Scheduler.Event.FLIP_REPEAT;
     }
 
+    // while paused: wait for Y (quit) or N (resume)  
     if (_escPending) {
       const confirm = psychoJS.eventManager.getKeys({ keyList: ['y', 'n'] });
       for (const k of confirm) {
-      const name = k.name || k;
-      if (name === 'y') return quitPsychoJS('Escape pressed', false);
-      if (name === 'n') {
-        _escPending = false;
-        escConfirmStim.setAutoDraw(false);   // hide the prompt and resume
-      }
+        const name = k.name || k;
+        if (name === 'y') return quitPsychoJS('사용자 종료', false);
+          if (name === 'n') {
+            _escPending = false;
+            pauseStim.setAutoDraw(false);
+            allStimOff();
+            _trialClock.reset();
+            _phaseStartT     = 0;
+            _phaseDuration   = CFG.product_dur;
+            _trialPhase      = 'product';
+            _qIdx            = 0;
+            _qSelectedCircle = null;
+            _trialResults    = {}; 
+            psychoJS.experiment.addData('product.restarted', 0);
+            productStim.setAutoDraw(true);
+            if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+              document.documentElement.requestFullscreen().catch(() => {});
+            }
+          }
+        }
+      return Scheduler.Event.FLIP_REPEAT;
     }
-    return Scheduler.Event.FLIP_REPEAT;
-    }
+
 
     // product (equivalent to Python function show_image_timed())
     if (_trialPhase === 'product') {
