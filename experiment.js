@@ -6,7 +6,6 @@ const { Scheduler } = util;
 // ─────────────────────────────────────────────
 //  CONFIG
 // ─────────────────────────────────────────────
-
 const CFG = {
   product_dur:            4.0,    // secs that the product is shown 
   info_dur:               9.0,    // secs that the endorsement is shown
@@ -48,7 +47,6 @@ const INFO_CODE_MAP = {
   gpt:       '04',
 };
 
-
 const INFO_LABEL_MAP = {  
   // expert is handled separately    // dictionary for information source label
   consensus: '[소비자 의견 종합]',  
@@ -66,10 +64,8 @@ const QUESTION_DEFS = {
 };
 
 // questions shown per endorser type:
-//  GPT = all 4 credibility Qs & preference 
-const GPT_QUESTIONS   = ['credEX', 'credCON', 'credPEER', 'credGen', 'preference'];
-//  human endorsers = credibilityGeneral & preference
-const OTHER_QUESTIONS = ['credGen', 'preference'];
+const GPT_QUESTIONS   = ['credEX', 'credCON', 'credPEER', 'credGen', 'preference']; //GPT = all 4 credibility Qs & preference 
+const OTHER_QUESTIONS = ['credGen', 'preference'];  //human endorsers = credibilityGeneral & preference
 
 //  all question options and column names, listed for CSV creation later
 const ALL_Q_KEYS      = ['credEX', 'credCON', 'credPEER', 'credGen', 'preference'];
@@ -81,12 +77,11 @@ const CSV_NAME_MAP = {
   preference: 'Preference',
 };
 
-
 // ─────────────────────────────────────────────
 //  HELPERS
 // ─────────────────────────────────────────────
 
-// normalize a string
+//  normalize a string
 function normStr(s) { return String(s).trim().toLowerCase().replace(/\s+/g, ' '); }
 
 // validate randomized info order (also accounts for is_valid_order)
@@ -160,7 +155,6 @@ function assignInfoTypesBalanced(rows, infoTypes, maxRun = 2, maxTries = 5000) {
       overall[chosen]      = (overall[chosen]      || 0) + 1;
       perCombo[ck][chosen] = (perCombo[ck][chosen] || 0) + 1;
     }
-
     if (ok) return assigned;
   }
   
@@ -224,7 +218,6 @@ function trialResources(trial, infoType) {
   return [{ name: prod, path: prod }, { name: info, path: info }];
 }
 
-
 // ─────────────────────────────────────────────
 //  PSYCHOJS BOOTSTRAP
 // ─────────────────────────────────────────────
@@ -274,6 +267,9 @@ flowScheduler.add(experimentInit);
 flowScheduler.add(introRoutineBegin());
 flowScheduler.add(introRoutineEachFrame());
 flowScheduler.add(introRoutineEnd());
+flowScheduler.add(infoPagesRoutineBegin());
+flowScheduler.add(infoPagesRoutineEachFrame());
+flowScheduler.add(infoPagesRoutineEnd());
 flowScheduler.add(introFixRoutineBegin());
 flowScheduler.add(introFixRoutineEachFrame());
 flowScheduler.add(introFixRoutineEnd());
@@ -289,7 +285,6 @@ flowScheduler.add(finalRoutineEnd());
 flowScheduler.add(quitPsychoJS, '', true);              // save data and close experiment 
 dialogCancelScheduler.add(quitPsychoJS, '', false);
 
-
 // JS only: register static resources that must be preloaded before the start of the study 
 psychoJS.start({
   expName: 'Endorsement Study',
@@ -298,7 +293,9 @@ psychoJS.start({
     { name: 'product_list.csv',                         path: 'product_list.csv'                         },
     { name: 'expert_labels.csv',                        path: 'expert_labels.csv'                        },
     { name: 'stim/00_fixation/fixation.png',            path: 'stim/00_fixation/fixation.png'            },
-    { name: 'stim/04_intro/intro.png',                  path: 'stim/04_intro/intro.png'                  },
+    { name: 'stim/04_intro/intro.png',                  path: 'stim/04_intro/intro.png'                    },
+    { name: 'stim/04_intro/info_1.png',                 path: 'stim/04_intro/info_1.png'                 },
+    { name: 'stim/04_intro/info_2.png',                 path: 'stim/04_intro/info_2.png'                },
     { name: 'stim/04_intro/pause.png',                  path: 'stim/04_intro/pause.png'                  },
     { name: 'stim/03_question/credibility_EX.png',      path: 'stim/03_question/credibility_EX.png'      },
     { name: 'stim/03_question/credibility_CON.png',     path: 'stim/03_question/credibility_CON.png'     },
@@ -310,9 +307,7 @@ psychoJS.start({
   ],
 });
 
-
 psychoJS.experimentLogger.setLevel(core.Logger.ServerLevel.EXP);
-
 
 // ─────────────────────────────────────────────
 //  GLOBAL STATE
@@ -322,6 +317,8 @@ psychoJS.experimentLogger.setLevel(core.Logger.ServerLevel.EXP);
 // similar to Python's global keyword 
 let globalClock, routineTimer, currentLoop, frameDur;   // clocks and loop reference 
 let introClock, introStim, introKey, introFixClock;     // intro-specific clocks and stim
+let infoPagesClock, infoPageStim, infoPageLabelStim, infoPageSubLabelStim, infoPageWarnStim; // info pages
+let infoPagesKey; 
 let fixStim, productStim, infoStim, labelStim, questionStim;    // shared stimuli reused every trial 
 let pauseStim;          // pause screen image (stim/04_intro/pause.png)
 let _escPending = false; // true while pause screen is visible
@@ -335,7 +332,6 @@ let gptCounter = 0, otherCounter = 0, trialIndex = 0;
 
 // colors for Likert circle fill
 let _colRed, _colClear;
-
 
 // ─────────────────────────────────────────────
 //  updateInfo
@@ -376,9 +372,7 @@ async function updateInfo() {
   psychoJS.experiment.dataFileName =
     `data/${expInfo['Participant ID']}_GPTProj_${expInfo['date']}`;
   return Scheduler.Event.NEXT;
-
 }
-
 
 // ─────────────────────────────────────────────
 //  experimentInit
@@ -417,6 +411,54 @@ async function experimentInit() {
   });
   // intro requires Keyboard component, trials use eventManager 
   introKey = new core.Keyboard({ psychoJS, clock: new util.Clock(), waitForStart: true });
+
+  // info pages stimuli (shown after intro screen, before experiment begins)
+  infoPagesClock = new util.Clock();
+  infoPageStim = new visual.ImageStim({
+    win, name: 'infoPageStim',
+    image: 'stim/04_intro/info_1.png',
+    pos: [0, 0], units: 'height', anchor: 'center',
+  });
+
+  // helper: create a text stim in the label style (same as source labels)
+  const makeLabelStim = (name, text, pos, depth = -1) => new visual.TextStim({
+    win, name,
+    text, pos,
+    height:      CFG.text_height_big,
+    color:       new util.Color(CFG.text_color),
+    font:        CFG.font,
+    bold:        CFG.text_bold,
+    alignText:   'left',
+    anchorHoriz: 'left',
+    units:       'height',
+    wrapWidth:   undefined,
+    depth:        -1,
+  });
+
+  // top-left label: "실험 소개"
+  infoPageLabelStim    = makeLabelStim('infoPageLabelStim',    '실험 소개',
+    [CFG.label_x, CFG.label_y]);
+  // second label: shown only on info pages 
+  infoPageSubLabelStim = makeLabelStim('infoPageSubLabelStim', '본 실험에는 4명의 정보원이 등장합니다.',
+    [CFG.label_x, CFG.label_y - CFG.text_height_big * 1.8]);
+
+  // warning text shown when participant tries to proceed too early
+  infoPageWarnStim = new visual.TextStim({
+    win, name: 'infoPageWarnStim',
+    text:        '내용을 읽어주세요!',
+    pos:         [0, -0.4],
+    height:      CFG.text_height_big,
+    color:       new util.Color('yellow'),
+    font:        CFG.font,
+    bold:        CFG.text_bold,
+    alignText:   'center',
+    anchorHoriz: 'center',
+    units:       'height',
+    wrapWidth:   undefined,
+    depth:       -2,
+  });
+  infoPagesKey = new core.Keyboard({ psychoJS, clock: new util.Clock(), waitForStart: true });
+
   fixStim = new visual.ImageStim({
     win, name: 'fixStim',
     image: 'stim/00_fixation/fixation.png',
@@ -470,15 +512,15 @@ async function experimentInit() {
   });
 
   document.addEventListener('fullscreenchange', () => {
-  if (!document.fullscreenElement &&
-      !_escPending &&
-      psychoJS.experiment &&
-      !psychoJS.experiment.experimentEnded) {
-    _escPending = true;
-    allStimOff();
-    pauseStim.setAutoDraw(true);
-  }
-});
+    if (!document.fullscreenElement &&
+        !_escPending &&
+        psychoJS.experiment &&
+        !psychoJS.experiment.experimentEnded) {
+      _escPending = true;
+      allStimOff();
+      pauseStim.setAutoDraw(true);
+    }
+  });
 
   // Likert scale (equivalent to Python class LikertScale)
   const xs       = numPyLinspace(CFG.scale_x_left, CFG.scale_x_right, CFG.scale_n);
@@ -580,7 +622,6 @@ async function experimentInit() {
   return Scheduler.Event.NEXT;
 }
 
-
 // ─────────────────────────────────────────────
 //  IMAGE LOAD HELPER
 // ─────────────────────────────────────────────
@@ -598,9 +639,7 @@ async function prefetchTrialImages(tIdx) {
     await psychoJS.serverManager.prepareResources(
       trialResources(trialRows[tIdx], infoAssignment[tIdx])
     );
-
     _fetchedTrials.add(tIdx);
-
   } catch (e) {
     console.warn(`prefetchTrialImages(${tIdx}) failed:`, e);
   }
@@ -632,14 +671,17 @@ function introRoutineEachFrame() {
     if (t >= 0 && introStim.status === PsychoJS.Status.NOT_STARTED) {
       introStim.tStart = t; introStim.status = PsychoJS.Status.STARTED;
       introStim.setAutoDraw(true);
+      infoPageLabelStim.setAutoDraw(true);
     }
+
     // JS only: callOnFlip delays keyboard start (equivalent to Python function checked_wait())
     if (t >= 0 && introKey.status === PsychoJS.Status.NOT_STARTED) {
       introKey.tStart = t; introKey.status = PsychoJS.Status.STARTED;
       psychoJS.window.callOnFlip(() => { introKey.clock.reset(); introKey.start(); introKey.clearEvents(); });
     }
     if (introKey.status === PsychoJS.Status.STARTED) {
-      const keys = introKey.getKeys({ keyList: ['space', 'return'], waitRelease: false });
+      // space only: advances to info pages
+      const keys = introKey.getKeys({ keyList: ['space'], waitRelease: false });
       introKey._allKeys = introKey._allKeys.concat(keys);
       if (introKey._allKeys.length > 0) continueRoutine = false;
     }
@@ -652,11 +694,110 @@ function introRoutineEachFrame() {
 function introRoutineEnd() {
   return async function () {
     for (const c of introComponents) if (typeof c.setAutoDraw === 'function') c.setAutoDraw(false);
+    infoPageLabelStim.setAutoDraw(false);
     introKey.stop(); routineTimer.reset();
     return Scheduler.Event.NEXT;
   };
 }
 
+// ─────────────────────────────────────────────
+//  INFO PAGES ROUTINE
+// ─────────────────────────────────────────────
+
+// shown after the intro screen. left/right arrows toggle between screens
+// space starts the experiment, only if participant has visited both pages for min. 2 secs
+
+let _infoCurrentPage;        // 1 or 2
+let _infoVisited;            // Set of visited page numbers
+let _infoAccumTime;          // accumulated dwell time
+let _infoPageEnteredAt;      // clock time when current page was entered
+let _infoWarnVisible;        // whether warning text is currently showing
+let _infoWarnStartT;         // when warning appeared (for auto-hide)
+const INFO_MIN_DUR  = 2.0;   // minimum seconds required on each page
+const INFO_WARN_DUR = 1.5;   // how long the warning text stays visible
+
+// returns total dwell time on a page (accumulated + current stay)
+function _infoDwell(page, now) {
+  return _infoAccumTime[page] + (_infoCurrentPage === page ? now - _infoPageEnteredAt : 0);
+}
+
+function infoPagesRoutineBegin() {
+  return async function () {
+    t = 0; infoPagesClock.reset(); continueRoutine = true;
+
+    _infoCurrentPage   = 1;
+    _infoVisited       = new Set([1]);
+    _infoAccumTime     = { 1: 0, 2: 0 };
+    _infoPageEnteredAt = 0;
+    _infoWarnVisible   = false;
+    _infoWarnStartT    = null;
+
+    infoPageStim.setImage('stim/04_intro/info_1.png');
+    infoPageStim.setAutoDraw(true);
+    infoPageLabelStim.setAutoDraw(true);
+    infoPageSubLabelStim.setAutoDraw(true);
+
+    infoPagesKey.keys = undefined; infoPagesKey.rt = undefined; infoPagesKey._allKeys = [];
+    infoPagesKey.status = PsychoJS.Status.NOT_STARTED;
+    psychoJS.window.callOnFlip(() => { infoPagesKey.clock.reset(); infoPagesKey.start(); infoPagesKey.clearEvents(); });
+
+    return Scheduler.Event.NEXT;
+  };
+}
+
+function infoPagesRoutineEachFrame() {
+  return async function () {
+    t = infoPagesClock.getTime();
+
+    if (infoPagesKey.status === PsychoJS.Status.NOT_STARTED) {
+      infoPagesKey.tStart = t; infoPagesKey.status = PsychoJS.Status.STARTED;
+    }
+
+    for (const k of infoPagesKey.getKeys({ keyList: ['left', 'right', 'space'], waitRelease: false })) {
+      const name = k.name || k;
+
+      if (name === 'left' || name === 'right') {
+        // accumulate dwell time on the page we're leaving, then switch
+        _infoAccumTime[_infoCurrentPage] += t - _infoPageEnteredAt;
+        _infoCurrentPage  = (_infoCurrentPage === 1) ? 2 : 1;
+        _infoVisited.add(_infoCurrentPage);
+        _infoPageEnteredAt = t;
+        infoPageStim.setImage(`stim/04_intro/info_${_infoCurrentPage}.png`);
+
+      } else if (name === 'space') {
+        const seenBoth   = _infoVisited.has(1) && _infoVisited.has(2);
+        const enoughTime = _infoDwell(1, t) >= INFO_MIN_DUR && _infoDwell(2, t) >= INFO_MIN_DUR;
+
+        if (seenBoth && enoughTime) {
+          continueRoutine = false;
+        } else if (!_infoWarnVisible) {
+          infoPageWarnStim.setAutoDraw(true);
+          _infoWarnVisible = true; _infoWarnStartT = t;
+        }
+      }
+    }
+
+    // auto-hide warning
+    if (_infoWarnVisible && (t - _infoWarnStartT) >= INFO_WARN_DUR) {
+      infoPageWarnStim.setAutoDraw(false); _infoWarnVisible = false;
+    }
+
+    if (psychoJS.experiment.experimentEnded) return quitPsychoJS('Experiment ended', false);
+    if (!continueRoutine) return Scheduler.Event.NEXT;
+    return Scheduler.Event.FLIP_REPEAT;
+  };
+}
+
+function infoPagesRoutineEnd() {
+  return async function () {
+    infoPageStim.setAutoDraw(false);
+    infoPageLabelStim.setAutoDraw(false);
+    infoPageSubLabelStim.setAutoDraw(false);
+    infoPageWarnStim.setAutoDraw(false);
+    infoPagesKey.stop(); routineTimer.reset();
+    return Scheduler.Event.NEXT;
+  };
+}
 
 // ─────────────────────────────────────────────
 //  FINAL ROUTINE
@@ -701,14 +842,12 @@ function finalRoutineEachFrame() {
   };
 }
 
-
 function finalRoutineEnd() {
   return async function () {
     finalStim.setAutoDraw(false);
     return Scheduler.Event.NEXT;
   };
 }
-
 
 // ─────────────────────────────────────────────
 //  INITIAL 3-SECOND FIXATION
@@ -749,7 +888,6 @@ function introFixRoutineEnd() {
   };
 }
 
-
 // ─────────────────────────────────────────────
 //  TRIAL LOOP
 // ─────────────────────────────────────────────
@@ -770,7 +908,6 @@ function trialsLoopBegin(loopScheduler) {
 function trialsLoopEnd() {
   return async function () { return Scheduler.Event.NEXT; };
 }
-
 
 // ─────────────────────────────────────────────
 //  PER-TRIAL ROUTINE
@@ -847,14 +984,12 @@ function trialRoutineBegin(tIdx) {
       _currentQOrder = [...qOrdersOther[otherCounter % qOrdersOther.length]];
       otherCounter++;
     }
-
     _qIdx = 0;
 
     // swap in trial's product and info images
     productStim.setImage(
       `stim/01_product/${_currentTrial.product_ENG}.png`
     );
-
     infoStim.setImage(
       `stim/02_information/${_currentTrial.product_ENG}_${INFO_CODE_MAP[_currentInfoType]}.png`
     );
@@ -869,7 +1004,6 @@ function trialRoutineBegin(tIdx) {
     psychoJS.experiment.addData('InfoType',       _currentInfoType);
     psychoJS.experiment.addData('Q_Order',        _currentQOrder.join('-'));
     psychoJS.experiment.addData('LabelText',      _currentLabelText || '');
-
     allStimOff();
 
     _phaseStartT = 0;
@@ -878,9 +1012,7 @@ function trialRoutineBegin(tIdx) {
     _escPending = false;   // reset pause state for every new trial
 
     productStim.setAutoDraw(true);
-
     psychoJS.experiment.addData('product.started', 0);
-
     return Scheduler.Event.NEXT;
   };
 }
@@ -951,12 +1083,9 @@ function trialRoutineEachFrame(tIdx) {
          labelStim.setText(_currentLabelText);
           labelStim.setAutoDraw(true);
        }
-
        infoStim.setAutoDraw(true);
-
        psychoJS.experiment.addData('info.started', _phaseStartT);
   }
-
   return Scheduler.Event.FLIP_REPEAT;
 }
 
@@ -1024,7 +1153,6 @@ function trialRoutineEachFrame(tIdx) {
 
       for (const k of pressed) {
         const name = k.name || k;
-
         if (name === 'left') {
           // mirrors Python LikertScale: first press jumps to middle (n//2 = index 3 for n=7)
           _qSelectedCircle = (_qSelectedCircle === null)
@@ -1044,7 +1172,6 @@ function trialRoutineEachFrame(tIdx) {
 
       // redraw circles to reflect current selection 
       updateCircleFills(_qSelectedCircle);
-
       if (_qResponseGiven) {
         questionStim.setAutoDraw(false);
         labelStim.setAutoDraw(false);
