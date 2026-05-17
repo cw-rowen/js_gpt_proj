@@ -255,24 +255,8 @@ const flowScheduler         = new Scheduler(psychoJS);
 const dialogCancelScheduler = new Scheduler(psychoJS);
 
 // JS only: OK for running experiment, Cancel for quitting experiment
-// validation for fields 
 psychoJS.scheduleCondition(
-  () => {
-    if (psychoJS.gui.dialogComponent.button !== 'OK') return false;
-
-    const id    = String(expInfo['참가자 ID']).trim();
-    const peers = [1,2,3,4].map(i => String(expInfo[`친구 이름 ${i}`]).trim());
-
-    const missing = [];
-    if (!id) missing.push('참가자 ID');
-    [1,2,3,4].forEach(i => { if (!peers[i-1]) missing.push(`친구 이름 ${i}`); });
-
-    if (missing.length > 0) {
-      alert(`다음 항목을 입력해주세요:\n• ${missing.join('\n• ')}`);
-      return false;   // routes to dialogCancelScheduler — no credit used
-    }
-    return true;
-  },
+  () => psychoJS.gui.dialogComponent.button === 'OK',
   flowScheduler,
   dialogCancelScheduler,
 );
@@ -358,6 +342,24 @@ let _colRed, _colClear;
 async function updateInfo() {
   currentLoop = psychoJS.experiment;
 
+  // JS only: re-show dialog until all fields are filled
+  const id    = String(expInfo['참가자 ID']).trim();
+  const peers = [1,2,3,4].map(i => String(expInfo[`친구 이름 ${i}`]).trim());
+  const missing = [];
+  if (!id) missing.push('참가자 ID');
+  [1,2,3,4].forEach(i => { if (!peers[i-1]) missing.push(`친구 이름 ${i}`); });
+
+  if (missing.length > 0) {
+    await psychoJS.gui.DlgFromDict({
+      dictionary: expInfo,
+      title:      '연구 참여 정보 입력 (모든 항목을 입력해주세요)',
+    })();
+    if (psychoJS.gui.dialogComponent.button !== 'OK') {
+      return quitPsychoJS('사용자 취소', false);
+    }
+    return Scheduler.Event.FLIP_REPEAT;   // re-run updateInfo
+  }
+
   // remap Korean dialog keys for English CSV column titles 
   const englishData = {
     'Participant ID': expInfo['참가자 ID'],
@@ -370,7 +372,7 @@ async function updateInfo() {
   // overwrite expInfo with the English keys 
   Object.assign(expInfo, englishData);
 
-  // remove the Korean keys so they don't appear in the CSV
+  // remove the Korean keys so they do not appear in the CSV
   delete expInfo['참가자 ID'];
   delete expInfo['친구 이름 1'];
   delete expInfo['친구 이름 2'];
@@ -409,7 +411,6 @@ async function experimentInit() {
   globalClock   = new util.Clock();
   routineTimer  = new util.CountdownTimer();
 
-  // fields already validated in scheduleCondition before psychoJS.start()
   const ID = String(expInfo['Participant ID']).trim();
   peerNames = [1,2,3,4].map(i => String(expInfo[`Peer ${i}`]).trim());
 
@@ -722,12 +723,12 @@ function introRoutineEnd() {
 // space starts the experiment, only if participant has visited both pages for min. 2 secs
 
 let _infoCurrentPage;        // 1 or 2
-let _infoVisited;            // set of visited page numbers
+let _infoVisited;            // Set of visited page numbers
 let _infoAccumTime;          // accumulated dwell time
 let _infoPageEnteredAt;      // clock time when current page was entered
 let _infoWarnVisible;        // whether warning text is currently showing
 let _infoWarnStartT;         // when warning appeared (for auto-hide)
-const INFO_MIN_DUR  = 1.5;   // minimum seconds required on each page
+const INFO_MIN_DUR  = 2.0;   // minimum seconds required on each page
 const INFO_WARN_DUR = 1.5;   // how long the warning text stays visible
 
 // returns total dwell time on a page (accumulated + current stay)
