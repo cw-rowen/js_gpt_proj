@@ -250,21 +250,37 @@ psychoJS.schedule(psychoJS.gui.DlgFromDict({
   title:      '연구 참여 정보 입력',
 }));
 
+
+// Patch the OK button after the dialog renders, on the next frame
+// DlgFromDict builds its HTML synchronously on first frame tick,
+// so we wait one rAF then hijack the OK button's onclick
+function patchDialogOKButton() {
+  const okBtn = document.getElementById('dialogOK');
+  if (!okBtn) { requestAnimationFrame(patchDialogOKButton); return; }
+
+  const original = okBtn.onclick;
+  okBtn.onclick = function(e) {
+    const allFilled = Object.values(expInfo).every(v => String(v).trim() !== '');
+    if (!allFilled) {
+      // Show inline error inside the dialog instead of alert()
+      let warn = document.getElementById('_fillWarning');
+      if (!warn) {
+        warn = document.createElement('p');
+        warn.id = '_fillWarning';
+        warn.style.cssText = 'color:red;margin:4px 0 0;text-align:center;font-size:0.9em';
+        okBtn.parentElement.insertBefore(warn, okBtn);
+      }
+      warn.textContent = '모든 항목을 입력해 주세요. (Please fill in all fields.)';
+      return;   // block PsychoJS from seeing the click entirely
+    }
+    original.call(this, e);  // all filled → let PsychoJS proceed normally
+  };
+}
+requestAnimationFrame(patchDialogOKButton);
+
 // JS only: schedulers for normal flow and cancelled dialog flow
 const flowScheduler         = new Scheduler(psychoJS);
 const dialogCancelScheduler = new Scheduler(psychoJS);
-
-
-
-// JS only: OK for running experiment, Cancel for quitting experiment 
-psychoJS.scheduleCondition(
-  function checkDialogAndProceed() {
-    if (!psychoJS.gui.dialogComponent) return false;
-    return psychoJS.gui.dialogComponent.button === 'OK';
-  },
-  flowScheduler,
-  dialogCancelScheduler,
-);
 
 // JS only: queue all routines in order (equivalent to Python main())
 flowScheduler.add(updateInfo);                
@@ -345,29 +361,6 @@ let _colRed, _colClear;
 // JS only: first scheduled function
 // equivalent to the start of Python main()
 async function updateInfo() {
-    while (true) {
-    const allFilled = Object.values(expInfo).every(v => String(v).trim() !== '');
-    if (allFilled) break;
-
-    alert('모든 항목을 입력해 주세요.');
-
-    // Re-show the dialog and wait for it to be dismissed
-    await new Promise(resolve => {
-      const dlg = psychoJS.gui.DlgFromDict({
-        dictionary: expInfo,
-        title: '연구 참여 정보 입력',
-      });
-      // DlgFromDict returns a component; poll until button is set
-      const poll = setInterval(() => {
-        if (dlg.button === 'OK' || dlg.button === 'Cancel') {
-          clearInterval(poll);
-          if (dlg.button === 'Cancel') quitPsychoJS('사용자 취소', false);
-          resolve();
-        }
-      }, 100);
-    });
-  }
-
   currentLoop = psychoJS.experiment;
 
   // remap Korean dialog keys for English CSV column titles 
