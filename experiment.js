@@ -260,41 +260,7 @@ const dialogCancelScheduler = new Scheduler(psychoJS);
 psychoJS.scheduleCondition(
   function checkDialogAndProceed() {
     if (!psychoJS.gui.dialogComponent) return false;
-    if (psychoJS.gui.dialogComponent.button !== 'OK') return false;
-
-    const allFilled = Object.values(expInfo).every(v => String(v).trim() !== '');
-    if (!allFilled) {
-      psychoJS.gui.dialogComponent.button = undefined;
-      alert('모든 항목을 입력해 주세요.\n(Please fill in all fields before continuing.)');
-      psychoJS.schedule(psychoJS.gui.DlgFromDict({
-        dictionary: expInfo,
-        title:      '연구 참여 정보 입력',
-      }));
-      // re-register resources so the new dialog's OK button gets enabled
-      psychoJS.start({
-        expName: 'Endorsement Study',
-        expInfo,
-        resources: [
-          { name: 'product_list.csv',                         path: 'product_list.csv'                         },
-          { name: 'expert_labels.csv',                        path: 'expert_labels.csv'                        },
-          { name: 'stim/00_fixation/fixation.png',            path: 'stim/00_fixation/fixation.png'            },
-          { name: 'stim/04_intro/intro.png',                  path: 'stim/04_intro/intro.png'                  },
-          { name: 'stim/04_intro/info_1.png',                 path: 'stim/04_intro/info_1.png'                 },
-          { name: 'stim/04_intro/info_2.png',                 path: 'stim/04_intro/info_2.png'                 },
-          { name: 'stim/04_intro/pause.png',                  path: 'stim/04_intro/pause.png'                  },
-          { name: 'stim/03_question/credibility_EX.png',      path: 'stim/03_question/credibility_EX.png'      },
-          { name: 'stim/03_question/credibility_CON.png',     path: 'stim/03_question/credibility_CON.png'     },
-          { name: 'stim/03_question/credibility_PEER.png',    path: 'stim/03_question/credibility_PEER.png'    },
-          { name: 'stim/03_question/credibility_general.png', path: 'stim/03_question/credibility_general.png' },
-          { name: 'stim/03_question/preference.png',          path: 'stim/03_question/preference.png'          },
-          { name: 'stim/04_intro/final.png',                  path: 'stim/04_intro/final.png'                  },
-          { name: 'default.png', path: 'https://pavlovia.org/assets/default/default.png' },
-        ],
-      });
-      psychoJS.scheduleCondition(checkDialogAndProceed, flowScheduler, dialogCancelScheduler);
-      return false;
-    }
-    return true;
+    return psychoJS.gui.dialogComponent.button === 'OK';
   },
   flowScheduler,
   dialogCancelScheduler,
@@ -379,6 +345,29 @@ let _colRed, _colClear;
 // JS only: first scheduled function
 // equivalent to the start of Python main()
 async function updateInfo() {
+    while (true) {
+    const allFilled = Object.values(expInfo).every(v => String(v).trim() !== '');
+    if (allFilled) break;
+
+    alert('모든 항목을 입력해 주세요.');
+
+    // Re-show the dialog and wait for it to be dismissed
+    await new Promise(resolve => {
+      const dlg = psychoJS.gui.DlgFromDict({
+        dictionary: expInfo,
+        title: '연구 참여 정보 입력',
+      });
+      // DlgFromDict returns a component; poll until button is set
+      const poll = setInterval(() => {
+        if (dlg.button === 'OK' || dlg.button === 'Cancel') {
+          clearInterval(poll);
+          if (dlg.button === 'Cancel') quitPsychoJS('사용자 취소', false);
+          resolve();
+        }
+      }, 100);
+    });
+  }
+
   currentLoop = psychoJS.experiment;
 
   // remap Korean dialog keys for English CSV column titles 
