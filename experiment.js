@@ -254,9 +254,25 @@ psychoJS.schedule(psychoJS.gui.DlgFromDict({
 const flowScheduler         = new Scheduler(psychoJS);
 const dialogCancelScheduler = new Scheduler(psychoJS);
 
-// JS only: OK for running experiment, Cancel for quitting experiment 
+// JS only: OK for running experiment, Cancel for quitting experiment
+// validation for fields 
 psychoJS.scheduleCondition(
-  () => psychoJS.gui.dialogComponent.button === 'OK',
+  () => {
+    if (psychoJS.gui.dialogComponent.button !== 'OK') return false;
+
+    const id    = String(expInfo['참가자 ID']).trim();
+    const peers = [1,2,3,4].map(i => String(expInfo[`친구 이름 ${i}`]).trim());
+
+    const missing = [];
+    if (!id) missing.push('참가자 ID');
+    [1,2,3,4].forEach(i => { if (!peers[i-1]) missing.push(`친구 이름 ${i}`); });
+
+    if (missing.length > 0) {
+      alert(`다음 항목을 입력해주세요:\n• ${missing.join('\n• ')}`);
+      return false;   // routes to dialogCancelScheduler — no credit used
+    }
+    return true;
+  },
   flowScheduler,
   dialogCancelScheduler,
 );
@@ -393,11 +409,9 @@ async function experimentInit() {
   globalClock   = new util.Clock();
   routineTimer  = new util.CountdownTimer();
 
-  // validate ID and peer names, use warnings instead of quitting 
+  // fields already validated in scheduleCondition before psychoJS.start()
   const ID = String(expInfo['Participant ID']).trim();
   peerNames = [1,2,3,4].map(i => String(expInfo[`Peer ${i}`]).trim());
-  if (!ID)                           console.warn('Participant ID is empty.');
-  if (peerNames.some(n => n === '')) console.warn('A peer name field is empty.');
 
   // color constants (in JS, they must be built after PsychoJS window)
   _colRed   = new util.Color('red');
@@ -708,12 +722,12 @@ function introRoutineEnd() {
 // space starts the experiment, only if participant has visited both pages for min. 2 secs
 
 let _infoCurrentPage;        // 1 or 2
-let _infoVisited;            // Set of visited page numbers
+let _infoVisited;            // set of visited page numbers
 let _infoAccumTime;          // accumulated dwell time
 let _infoPageEnteredAt;      // clock time when current page was entered
 let _infoWarnVisible;        // whether warning text is currently showing
 let _infoWarnStartT;         // when warning appeared (for auto-hide)
-const INFO_MIN_DUR  = 2.0;   // minimum seconds required on each page
+const INFO_MIN_DUR  = 1.5;   // minimum seconds required on each page
 const INFO_WARN_DUR = 1.5;   // how long the warning text stays visible
 
 // returns total dwell time on a page (accumulated + current stay)
