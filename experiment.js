@@ -260,23 +260,21 @@ const dialogCancelScheduler = new Scheduler(psychoJS);
 psychoJS.scheduleCondition(
   function checkDialogAndProceed() {
     if (!psychoJS.gui.dialogComponent) return false;
-      console.log('dialogComponent:', JSON.stringify({
-      button: psychoJS.gui.dialogComponent.button,
-      status: psychoJS.gui.dialogComponent.status,
-      keys: Object.keys(psychoJS.gui.dialogComponent),
-    }));
-
     if (psychoJS.gui.dialogComponent.button !== 'OK') return false;
 
     const allFilled = Object.values(expInfo).every(v => String(v).trim() !== '');
     if (!allFilled) {
-      alert('모든 항목을 입력해 주세요.\n(Please fill in all fields before continuing.)');
+      // Non-blocking: inject error text into the dialog DOM
+      const existing = document.getElementById('_dlgError');
+      if (!existing) {
+        const msg = document.createElement('p');
+        msg.id = '_dlgError';
+        msg.textContent = '모든 항목을 입력해 주세요. (Please fill in all fields.)';
+        msg.style.cssText = 'color:red; font-weight:bold; text-align:center; margin:8px 0;';
+        const dlg = document.querySelector('.dialog, .psychojs-dialog, [role="dialog"]');
+        if (dlg) dlg.appendChild(msg);
+      }
       psychoJS.gui.dialogComponent.button = undefined;
-      psychoJS.schedule(psychoJS.gui.DlgFromDict({
-        dictionary: expInfo,
-        title:      '연구 참여 정보 입력',
-      }));
-      psychoJS.scheduleCondition(checkDialogAndProceed, flowScheduler, dialogCancelScheduler);
       return false;
     }
     return true;
@@ -464,7 +462,7 @@ async function experimentInit() {
     [CFG.label_x, CFG.label_y]);
   // second label: shown only on info pages 
   infoLabelStim = makeLabelStim('infoLabelStim', '본 실험에는 4명의 정보원이 등장합니다.',
-    [CFG.label_x, CFG.label_y], -1, 1.0);
+    [CFG.label_x, CFG.label_y], -1, 1.5);
  
   // warning text shown when participant tries to proceed too early
   infoPageWarnStim = new visual.TextStim({
