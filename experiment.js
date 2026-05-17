@@ -254,13 +254,9 @@ psychoJS.schedule(psychoJS.gui.DlgFromDict({
 // Patch the OK button after the dialog renders, on the next frame
 function patchDialogOKButton() {
   const okBtn = document.getElementById('dialogOK');
-  // Wait until the button exists AND PsychoJS has assigned its onclick
-  if (!okBtn || !okBtn.onclick) { 
-    requestAnimationFrame(patchDialogOKButton); 
-    return; 
-  }
+  if (!okBtn) { requestAnimationFrame(patchDialogOKButton); return; }
 
-  const original = okBtn.onclick.bind(okBtn);
+  const original = okBtn.onclick;
   okBtn.onclick = function(e) {
     const allFilled = Object.values(expInfo).every(v => String(v).trim() !== '');
     if (!allFilled) {
@@ -274,9 +270,10 @@ function patchDialogOKButton() {
       warn.textContent = '모든 항목을 입력해 주세요. (Please fill in all fields.)';
       return;
     }
-    original(e);
+    original.call(this, e);
   };
 }
+requestAnimationFrame(patchDialogOKButton);
 
 // JS only: schedulers for normal flow and cancelled dialog flow
 const flowScheduler         = new Scheduler(psychoJS);
