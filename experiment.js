@@ -265,16 +265,32 @@ psychoJS.scheduleCondition(
     const allFilled = Object.values(expInfo).every(v => String(v).trim() !== '');
     if (!allFilled) {
       psychoJS.gui.dialogComponent.button = undefined;
-      // show error message in dialog without blocking
-      if (!document.getElementById('_dlgError')) {
-        const msg = document.createElement('p');
-        msg.id = '_dlgError';
-        msg.textContent = '모든 항목을 입력해 주세요.';
-        msg.style.cssText = 'color:red; font-weight:bold; text-align:center; margin:8px 0;';
-        // append to whatever element is visible — check devtools for the right selector
-        const dlg = document.querySelector('.dialog, .psychojs-dialog, [role="dialog"]');
-        if (dlg) dlg.appendChild(msg);
-      }
+      psychoJS.schedule(psychoJS.gui.DlgFromDict({
+        dictionary: expInfo,
+        title:      '연구 참여 정보 입력',
+      }));
+      // re-register resources so the new dialog's OK button gets enabled
+      psychoJS.start({
+        expName: 'Endorsement Study',
+        expInfo,
+        resources: [
+          { name: 'product_list.csv',                         path: 'product_list.csv'                         },
+          { name: 'expert_labels.csv',                        path: 'expert_labels.csv'                        },
+          { name: 'stim/00_fixation/fixation.png',            path: 'stim/00_fixation/fixation.png'            },
+          { name: 'stim/04_intro/intro.png',                  path: 'stim/04_intro/intro.png'                  },
+          { name: 'stim/04_intro/info_1.png',                 path: 'stim/04_intro/info_1.png'                 },
+          { name: 'stim/04_intro/info_2.png',                 path: 'stim/04_intro/info_2.png'                 },
+          { name: 'stim/04_intro/pause.png',                  path: 'stim/04_intro/pause.png'                  },
+          { name: 'stim/03_question/credibility_EX.png',      path: 'stim/03_question/credibility_EX.png'      },
+          { name: 'stim/03_question/credibility_CON.png',     path: 'stim/03_question/credibility_CON.png'     },
+          { name: 'stim/03_question/credibility_PEER.png',    path: 'stim/03_question/credibility_PEER.png'    },
+          { name: 'stim/03_question/credibility_general.png', path: 'stim/03_question/credibility_general.png' },
+          { name: 'stim/03_question/preference.png',          path: 'stim/03_question/preference.png'          },
+          { name: 'stim/04_intro/final.png',                  path: 'stim/04_intro/final.png'                  },
+          { name: 'default.png', path: 'https://pavlovia.org/assets/default/default.png' },
+        ],
+      });
+      psychoJS.scheduleCondition(checkDialogAndProceed, flowScheduler, dialogCancelScheduler);
       return false;
     }
     return true;
