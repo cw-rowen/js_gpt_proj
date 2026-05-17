@@ -260,16 +260,9 @@ psychoJS.scheduleCondition(
     if (psychoJS.gui.dialogComponent.button !== 'OK') return false;
     const allFilled = Object.values(expInfo).every(v => String(v).trim() !== '');
     if (!allFilled) {
-      // Re-show the dialog with an error note by re-scheduling it.
-      // PsychoJS dialogs don't natively support inline errors, so we alert and
-      // let the scheduler loop back to the dialog on the next cycle.
       alert('모든 항목을 입력해 주세요.\n(Please fill in all fields before continuing.)');
-      // Reset the button so the condition is re-evaluated after re-showing
+      // reset button so the dialog stays open and re-evaluates on next OK click
       psychoJS.gui.dialogComponent.button = undefined;
-      psychoJS.schedule(psychoJS.gui.DlgFromDict({
-        dictionary: expInfo,
-        title:      '연구 참여 정보 입력',
-      }));
       return false;
     }
     return true;
@@ -446,7 +439,7 @@ async function experimentInit() {
     font:        CFG.font,
     bold:        CFG.text_bold,
     alignText:   'left',
-    anchorHoriz: 'left',
+    anchor:      'left-center',
     units:       'height',
     wrapWidth:   wrapWidth,
     depth:        -1,
