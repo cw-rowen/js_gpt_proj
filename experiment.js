@@ -342,22 +342,31 @@ let _colRed, _colClear;
 async function updateInfo() {
   currentLoop = psychoJS.experiment;
 
-  // JS only: re-show dialog until all fields are filled
+  // JS only: validate all fields; if anything is missing, re-show the dialog
   const id    = String(expInfo['참가자 ID']).trim();
   const peers = [1,2,3,4].map(i => String(expInfo[`친구 이름 ${i}`]).trim());
-  const missing = [];
-  if (!id) missing.push('참가자 ID');
-  [1,2,3,4].forEach(i => { if (!peers[i-1]) missing.push(`친구 이름 ${i}`); });
+  const allFilled = id && peers.every(p => p.length > 0);
 
-  if (missing.length > 0) {
-    await psychoJS.gui.DlgFromDict({
+  if (!allFilled) {
+    // re-schedule the dialog and the condition branch
+    const retryTitle = '모든 항목을 입력해주세요';
+    psychoJS.schedule(psychoJS.gui.DlgFromDict({
       dictionary: expInfo,
-      title:      '연구 참여 정보 입력 (모든 항목을 입력해주세요)',
-    })();
-    if (psychoJS.gui.dialogComponent.button !== 'OK') {
-      return quitPsychoJS('사용자 취소', false);
-    }
-    return Scheduler.Event.FLIP_REPEAT;   // re-run updateInfo
+      title:      retryTitle,
+    }));
+
+    const retryFlow   = new Scheduler(psychoJS);
+    const retryCancel = new Scheduler(psychoJS);
+    psychoJS.scheduleCondition(
+      () => psychoJS.gui.dialogComponent.button === 'OK',
+      retryFlow,
+      retryCancel,
+    );
+    retryFlow.add(updateInfo);          // loop: validate again after OK
+    retryCancel.add(quitPsychoJS, '사용자 취소', false);  // cancel still quits
+
+    // stop advancing the current scheduler frame
+    return Scheduler.Event.NEXT;
   }
 
   // remap Korean dialog keys for English CSV column titles 
