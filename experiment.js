@@ -286,7 +286,7 @@ function patchDialogOKButton() {
         warn.style.cssText = 'color:red;margin:4px 0 0;text-align:center;font-size:0.9em';
         okBtn.parentElement.insertBefore(warn, okBtn);
       }
-      warn.textContent = '모든 항목을 입력해 주세요. (Please fill in all fields.)';
+      warn.textContent = '모든 항목을 입력해 주세요.';
       return;
     }
     original.call(this, e);
