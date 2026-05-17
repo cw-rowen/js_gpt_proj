@@ -256,7 +256,24 @@ const dialogCancelScheduler = new Scheduler(psychoJS);
 
 // JS only: OK for running experiment, Cancel for quitting experiment 
 psychoJS.scheduleCondition(
-  () => psychoJS.gui.dialogComponent.button === 'OK',
+  () => {
+    if (psychoJS.gui.dialogComponent.button !== 'OK') return false;
+    const allFilled = Object.values(expInfo).every(v => String(v).trim() !== '');
+    if (!allFilled) {
+      // Re-show the dialog with an error note by re-scheduling it.
+      // PsychoJS dialogs don't natively support inline errors, so we alert and
+      // let the scheduler loop back to the dialog on the next cycle.
+      alert('모든 항목을 입력해 주세요.\n(Please fill in all fields before continuing.)');
+      // Reset the button so the condition is re-evaluated after re-showing
+      psychoJS.gui.dialogComponent.button = undefined;
+      psychoJS.schedule(psychoJS.gui.DlgFromDict({
+        dictionary: expInfo,
+        title:      '연구 참여 정보 입력',
+      }));
+      return false;
+    }
+    return true;
+  },
   flowScheduler,
   dialogCancelScheduler,
 );
@@ -421,7 +438,7 @@ async function experimentInit() {
   });
 
   // helper: create a text stim in the label style (same as source labels)
-  const makeLabelStim = (name, text, pos, depth = -1) => new visual.TextStim({
+  const makeLabelStim = (name, text, pos, depth = -1, wrapWidth = undefined) => new visual.TextStim({
     win, name,
     text, pos,
     height:      CFG.text_height_big,
@@ -431,7 +448,7 @@ async function experimentInit() {
     alignText:   'left',
     anchorHoriz: 'left',
     units:       'height',
-    wrapWidth:   undefined,
+    wrapWidth:   wrapWidth,
     depth:        -1,
   });
 
@@ -440,8 +457,8 @@ async function experimentInit() {
     [CFG.label_x, CFG.label_y]);
   // second label: shown only on info pages 
   infoLabelStim = makeLabelStim('infoLabelStim', '본 실험에는 4명의 정보원이 등장합니다.',
-    [CFG.label_x, CFG.label_y]);
-
+    [CFG.label_x, CFG.label_y], -1, 2.0);
+ 
   // warning text shown when participant tries to proceed too early
   infoPageWarnStim = new visual.TextStim({
     win, name: 'infoPageWarnStim',
@@ -668,6 +685,25 @@ function introRoutineEachFrame() {
   return async function () {
     t = introClock.getTime();
 
+    // while paused (fullscreen exited): wait for Y (quit) or N (resume)
+    if (_escPending) {
+      const confirm = psychoJS.eventManager.getKeys({ keyList: ['y', 'n'] });
+      for (const k of confirm) {
+        const name = k.name || k;
+        if (name === 'y') return quitPsychoJS('사용자 종료', false);
+        if (name === 'n') {
+          pauseStim.setAutoDraw(false);
+          introStim.setAutoDraw(true);
+          titleLabelStim.setAutoDraw(true);
+          if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+            document.documentElement.requestFullscreen().catch(() => {});
+          }
+          _escPending = false;
+        }
+      }
+      return Scheduler.Event.FLIP_REPEAT;
+    }
+
     if (t >= 0 && introStim.status === PsychoJS.Status.NOT_STARTED) {
       introStim.tStart = t; introStim.status = PsychoJS.Status.STARTED;
       introStim.setAutoDraw(true);
@@ -747,6 +783,25 @@ function infoPagesRoutineBegin() {
 function infoPagesRoutineEachFrame() {
   return async function () {
     t = infoPagesClock.getTime();
+
+    // while paused (fullscreen exited): wait for Y (quit) or N (resume)
+    if (_escPending) {
+      const confirm = psychoJS.eventManager.getKeys({ keyList: ['y', 'n'] });
+      for (const k of confirm) {
+        const name = k.name || k;
+        if (name === 'y') return quitPsychoJS('사용자 종료', false);
+        if (name === 'n') {
+          pauseStim.setAutoDraw(false);
+          infoPageStim.setAutoDraw(true);
+          infoLabelStim.setAutoDraw(true);
+          if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+            document.documentElement.requestFullscreen().catch(() => {});
+          }
+          _escPending = false;
+        }
+      }
+      return Scheduler.Event.FLIP_REPEAT;
+    }
 
     if (infoPagesKey.status === PsychoJS.Status.NOT_STARTED) {
       infoPagesKey.tStart = t; infoPagesKey.status = PsychoJS.Status.STARTED;
