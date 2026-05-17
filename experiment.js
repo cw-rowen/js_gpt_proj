@@ -265,6 +265,7 @@ psychoJS.scheduleCondition(
     const allFilled = Object.values(expInfo).every(v => String(v).trim() !== '');
     if (!allFilled) {
       psychoJS.gui.dialogComponent.button = undefined;
+      alert('모든 항목을 입력해 주세요.\n(Please fill in all fields before continuing.)');
       psychoJS.schedule(psychoJS.gui.DlgFromDict({
         dictionary: expInfo,
         title:      '연구 참여 정보 입력',
