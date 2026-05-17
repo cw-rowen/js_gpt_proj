@@ -260,6 +260,12 @@ const dialogCancelScheduler = new Scheduler(psychoJS);
 psychoJS.scheduleCondition(
   function checkDialogAndProceed() {
     if (!psychoJS.gui.dialogComponent) return false;
+      console.log('dialogComponent:', JSON.stringify({
+      button: psychoJS.gui.dialogComponent.button,
+      status: psychoJS.gui.dialogComponent.status,
+      keys: Object.keys(psychoJS.gui.dialogComponent),
+    }));
+
     if (psychoJS.gui.dialogComponent.button !== 'OK') return false;
 
     const allFilled = Object.values(expInfo).every(v => String(v).trim() !== '');
@@ -447,7 +453,7 @@ async function experimentInit() {
     font:        CFG.font,
     bold:        CFG.text_bold,
     alignText:   'left',
-    anchor:      'left-center',
+    anchor:      'left',
     units:       'height',
     wrapWidth:   wrapWidth,
     depth:        -1,
@@ -458,7 +464,7 @@ async function experimentInit() {
     [CFG.label_x, CFG.label_y]);
   // second label: shown only on info pages 
   infoLabelStim = makeLabelStim('infoLabelStim', '본 실험에는 4명의 정보원이 등장합니다.',
-    [CFG.label_x, CFG.label_y], -1, 2.0);
+    [CFG.label_x, CFG.label_y], -1, 1.0);
  
   // warning text shown when participant tries to proceed too early
   infoPageWarnStim = new visual.TextStim({
