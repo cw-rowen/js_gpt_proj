@@ -243,12 +243,50 @@ psychoJS.openWindow({
   backgroundImage: '',
   backgroundFit:   'none',
 });
-
 // show the participant info dialog (equivalent to Python gui.DlgFromDict())
+// Patch: intercept OK so empty fields keep the dialog open (non-fullscreen) instead of re-launching it
 psychoJS.schedule(psychoJS.gui.DlgFromDict({
   dictionary: expInfo,
   title:      '연구 참여 정보 입력',
 }));
+ 
+// JS only: after the dialog is scheduled, patch its OK button to block submission on empty fields.
+// We defer with setTimeout so the dialog DOM is ready before we attach the guard.
+setTimeout(() => {
+  const dlg = psychoJS.gui.dialogComponent;
+  if (!dlg) return;
+ 
+  // Find the OK button and wrap its click handler
+  const okBtn = dlg._okButton || (dlg.button === 'OK' ? null : null);
+ 
+  // Strategy: override the button property setter / intercept via a MutationObserver on the
+  // dialog container, OR — more reliably in PsychoJS — patch the scheduleCondition predicate
+  // by replacing the dialog's _validate method if it exists.
+  // Simplest universal approach: grab the real OK button from the DOM and intercept clicks.
+  const btnEls = document.querySelectorAll('button');
+  btnEls.forEach(btn => {
+    if (btn.textContent.trim() === 'OK' || btn.value === 'OK') {
+      const original = btn.onclick;
+      btn.addEventListener('click', (e) => {
+        const id    = String(expInfo['참가자 ID'] || '').trim();
+        const peers = [1,2,3,4].map(i => String(expInfo[`친구 이름 ${i}`] || '').trim());
+        if (!id || peers.some(p => p.length === 0)) {
+          e.stopImmediatePropagation();
+          // Show inline warning without closing or re-launching the dialog
+          let warn = document.getElementById('_dlg_warn_');
+          if (!warn) {
+            warn = document.createElement('p');
+            warn.id = '_dlg_warn_';
+            warn.style.cssText = 'color:red;font-weight:bold;margin:4px 0 0;text-align:center';
+            btn.parentElement.insertBefore(warn, btn);
+          }
+          warn.textContent = '모든 항목을 입력해주세요';
+        }
+      }, true); // capture phase so we run before PsychoJS handler
+    }
+  });
+}, 300);
+ 
 
 // JS only: schedulers for normal flow and cancelled dialog flow
 const flowScheduler         = new Scheduler(psychoJS);
@@ -341,34 +379,12 @@ let _colRed, _colClear;
 // equivalent to the start of Python main()
 async function updateInfo() {
   currentLoop = psychoJS.experiment;
-
+ 
   // JS only: validate all fields; if anything is missing, re-show the dialog
   const id    = String(expInfo['참가자 ID']).trim();
   const peers = [1,2,3,4].map(i => String(expInfo[`친구 이름 ${i}`]).trim());
   const allFilled = id && peers.every(p => p.length > 0);
-
-  if (!allFilled) {
-    // re-schedule the dialog and the condition branch
-    const retryTitle = '모든 항목을 입력해주세요';
-    psychoJS.schedule(psychoJS.gui.DlgFromDict({
-      dictionary: expInfo,
-      title:      retryTitle,
-    }));
-
-    const retryFlow   = new Scheduler(psychoJS);
-    const retryCancel = new Scheduler(psychoJS);
-    psychoJS.scheduleCondition(
-      () => psychoJS.gui.dialogComponent.button === 'OK',
-      retryFlow,
-      retryCancel,
-    );
-    retryFlow.add(updateInfo);          // loop: validate again after OK
-    retryCancel.add(quitPsychoJS, '사용자 취소', false);  // cancel still quits
-
-    // stop advancing the current scheduler frame
-    return Scheduler.Event.NEXT;
-  }
-
+ 
   // remap Korean dialog keys for English CSV column titles 
   const englishData = {
     'Participant ID': expInfo['참가자 ID'],
