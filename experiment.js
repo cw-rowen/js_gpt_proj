@@ -255,7 +255,11 @@ const flowScheduler         = new Scheduler(psychoJS);
 const dialogCancelScheduler = new Scheduler(psychoJS);
 
 psychoJS.scheduleCondition(
-  () => psychoJS.gui.dialogComponent?.button === 'OK',
+  () => {
+    if (!psychoJS.gui.dialogComponent) return false;
+    if (!psychoJS.gui.dialogComponent.button) return false;
+    return psychoJS.gui.dialogComponent.button === 'OK';
+  },
   flowScheduler,
   dialogCancelScheduler,
 );
