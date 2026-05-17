@@ -259,6 +259,7 @@ const dialogCancelScheduler = new Scheduler(psychoJS);
 // JS only: OK for running experiment, Cancel for quitting experiment 
 
 function checkDialogAndProceed() {
+  if (!psychoJS.gui.dialogComponent) return false;
   if (psychoJS.gui.dialogComponent.button !== 'OK') return false;
   const allFilled = Object.values(expInfo).every(v => String(v).trim() !== '');
   if (!allFilled) {
