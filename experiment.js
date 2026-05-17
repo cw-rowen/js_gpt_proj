@@ -243,56 +243,18 @@ psychoJS.openWindow({
   backgroundImage: '',
   backgroundFit:   'none',
 });
+
 // show the participant info dialog (equivalent to Python gui.DlgFromDict())
-// Patch: intercept OK so empty fields keep the dialog open (non-fullscreen) instead of re-launching it
 psychoJS.schedule(psychoJS.gui.DlgFromDict({
   dictionary: expInfo,
   title:      '연구 참여 정보 입력',
 }));
- 
-// JS only: after the dialog is scheduled, patch its OK button to block submission on empty fields.
-// We defer with setTimeout so the dialog DOM is ready before we attach the guard.
-setTimeout(() => {
-  const dlg = psychoJS.gui.dialogComponent;
-  if (!dlg) return;
- 
-  // Find the OK button and wrap its click handler
-  const okBtn = dlg._okButton || (dlg.button === 'OK' ? null : null);
- 
-  // Strategy: override the button property setter / intercept via a MutationObserver on the
-  // dialog container, OR — more reliably in PsychoJS — patch the scheduleCondition predicate
-  // by replacing the dialog's _validate method if it exists.
-  // Simplest universal approach: grab the real OK button from the DOM and intercept clicks.
-  const btnEls = document.querySelectorAll('button');
-  btnEls.forEach(btn => {
-    if (btn.textContent.trim() === 'OK' || btn.value === 'OK') {
-      const original = btn.onclick;
-      btn.addEventListener('click', (e) => {
-        const id    = String(expInfo['참가자 ID'] || '').trim();
-        const peers = [1,2,3,4].map(i => String(expInfo[`친구 이름 ${i}`] || '').trim());
-        if (!id || peers.some(p => p.length === 0)) {
-          e.stopImmediatePropagation();
-          // Show inline warning without closing or re-launching the dialog
-          let warn = document.getElementById('_dlg_warn_');
-          if (!warn) {
-            warn = document.createElement('p');
-            warn.id = '_dlg_warn_';
-            warn.style.cssText = 'color:red;font-weight:bold;margin:4px 0 0;text-align:center';
-            btn.parentElement.insertBefore(warn, btn);
-          }
-          warn.textContent = '모든 항목을 입력해주세요';
-        }
-      }, true); // capture phase so we run before PsychoJS handler
-    }
-  });
-}, 300);
- 
 
 // JS only: schedulers for normal flow and cancelled dialog flow
 const flowScheduler         = new Scheduler(psychoJS);
 const dialogCancelScheduler = new Scheduler(psychoJS);
 
-// JS only: OK for running experiment, Cancel for quitting experiment
+// JS only: OK for running experiment, Cancel for quitting experiment 
 psychoJS.scheduleCondition(
   () => psychoJS.gui.dialogComponent.button === 'OK',
   flowScheduler,
@@ -354,8 +316,8 @@ psychoJS.experimentLogger.setLevel(core.Logger.ServerLevel.EXP);
 // module-level let statements 
 // similar to Python's global keyword 
 let globalClock, routineTimer, currentLoop, frameDur;   // clocks and loop reference 
-let introClock, introStim, introKey, introFixClock;     // intro-specific clocks and stim
-let infoPagesClock, infoPageStim, infoPageLabelStim, infoPageSubLabelStim, infoPageWarnStim; // info pages
+let introClock, introStim, introKey, introFixClock, titleLabelStim;     // intro-specific clocks and stim
+let infoPagesClock, infoPageStim, infoLabelStim, infoPageWarnStim; // info pages
 let infoPagesKey; 
 let fixStim, productStim, infoStim, labelStim, questionStim;    // shared stimuli reused every trial 
 let pauseStim;          // pause screen image (stim/04_intro/pause.png)
@@ -379,12 +341,7 @@ let _colRed, _colClear;
 // equivalent to the start of Python main()
 async function updateInfo() {
   currentLoop = psychoJS.experiment;
- 
-  // JS only: validate all fields; if anything is missing, re-show the dialog
-  const id    = String(expInfo['참가자 ID']).trim();
-  const peers = [1,2,3,4].map(i => String(expInfo[`친구 이름 ${i}`]).trim());
-  const allFilled = id && peers.every(p => p.length > 0);
- 
+
   // remap Korean dialog keys for English CSV column titles 
   const englishData = {
     'Participant ID': expInfo['참가자 ID'],
@@ -397,7 +354,7 @@ async function updateInfo() {
   // overwrite expInfo with the English keys 
   Object.assign(expInfo, englishData);
 
-  // remove the Korean keys so they do not appear in the CSV
+  // remove the Korean keys so they don't appear in the CSV
   delete expInfo['참가자 ID'];
   delete expInfo['친구 이름 1'];
   delete expInfo['친구 이름 2'];
@@ -436,8 +393,11 @@ async function experimentInit() {
   globalClock   = new util.Clock();
   routineTimer  = new util.CountdownTimer();
 
+  // validate ID and peer names, use warnings instead of quitting 
   const ID = String(expInfo['Participant ID']).trim();
   peerNames = [1,2,3,4].map(i => String(expInfo[`Peer ${i}`]).trim());
+  if (!ID)                           console.warn('Participant ID is empty.');
+  if (peerNames.some(n => n === '')) console.warn('A peer name field is empty.');
 
   // color constants (in JS, they must be built after PsychoJS window)
   _colRed   = new util.Color('red');
@@ -476,11 +436,11 @@ async function experimentInit() {
   });
 
   // top-left label: "실험 소개"
-  infoPageLabelStim    = makeLabelStim('infoPageLabelStim',    '실험 소개',
+  titleLabelStim    = makeLabelStim('titleLabelStim',    '실험 소개',
     [CFG.label_x, CFG.label_y]);
   // second label: shown only on info pages 
-  infoPageSubLabelStim = makeLabelStim('infoPageSubLabelStim', '본 실험에는 4명의 정보원이 등장합니다.',
-    [CFG.label_x, CFG.label_y - CFG.text_height_big * 1.8]);
+  infoLabelStim = makeLabelStim('infoLabelStim', '본 실험에는 4명의 정보원이 등장합니다.',
+    [CFG.label_x, CFG.label_y]);
 
   // warning text shown when participant tries to proceed too early
   infoPageWarnStim = new visual.TextStim({
@@ -711,7 +671,7 @@ function introRoutineEachFrame() {
     if (t >= 0 && introStim.status === PsychoJS.Status.NOT_STARTED) {
       introStim.tStart = t; introStim.status = PsychoJS.Status.STARTED;
       introStim.setAutoDraw(true);
-      infoPageLabelStim.setAutoDraw(true);
+      titleLabelStim.setAutoDraw(true);
     }
 
     // JS only: callOnFlip delays keyboard start (equivalent to Python function checked_wait())
@@ -734,7 +694,7 @@ function introRoutineEachFrame() {
 function introRoutineEnd() {
   return async function () {
     for (const c of introComponents) if (typeof c.setAutoDraw === 'function') c.setAutoDraw(false);
-    infoPageLabelStim.setAutoDraw(false);
+    titleLabelStim.setAutoDraw(false);
     introKey.stop(); routineTimer.reset();
     return Scheduler.Event.NEXT;
   };
@@ -753,7 +713,7 @@ let _infoAccumTime;          // accumulated dwell time
 let _infoPageEnteredAt;      // clock time when current page was entered
 let _infoWarnVisible;        // whether warning text is currently showing
 let _infoWarnStartT;         // when warning appeared (for auto-hide)
-const INFO_MIN_DUR  = 2.0;   // minimum seconds required on each page
+const INFO_MIN_DUR  = 1.5;   // minimum seconds required on each page
 const INFO_WARN_DUR = 1.5;   // how long the warning text stays visible
 
 // returns total dwell time on a page (accumulated + current stay)
@@ -774,8 +734,7 @@ function infoPagesRoutineBegin() {
 
     infoPageStim.setImage('stim/04_intro/info_1.png');
     infoPageStim.setAutoDraw(true);
-    infoPageLabelStim.setAutoDraw(true);
-    infoPageSubLabelStim.setAutoDraw(true);
+    infoLabelStim.setAutoDraw(true);
 
     infoPagesKey.keys = undefined; infoPagesKey.rt = undefined; infoPagesKey._allKeys = [];
     infoPagesKey.status = PsychoJS.Status.NOT_STARTED;
@@ -831,8 +790,7 @@ function infoPagesRoutineEachFrame() {
 function infoPagesRoutineEnd() {
   return async function () {
     infoPageStim.setAutoDraw(false);
-    infoPageLabelStim.setAutoDraw(false);
-    infoPageSubLabelStim.setAutoDraw(false);
+    infoLabelStim.setAutoDraw(false);
     infoPageWarnStim.setAutoDraw(false);
     infoPagesKey.stop(); routineTimer.reset();
     return Scheduler.Event.NEXT;
