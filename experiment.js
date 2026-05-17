@@ -257,25 +257,27 @@ const dialogCancelScheduler = new Scheduler(psychoJS);
 
 
 // JS only: OK for running experiment, Cancel for quitting experiment 
+psychoJS.scheduleCondition(
+  function checkDialogAndProceed() {
+    if (!psychoJS.gui.dialogComponent) return false;
+    if (psychoJS.gui.dialogComponent.button !== 'OK') return false;
 
-function checkDialogAndProceed() {
-  if (!psychoJS.gui.dialogComponent) return false;
-  if (psychoJS.gui.dialogComponent.button !== 'OK') return false;
-  const allFilled = Object.values(expInfo).every(v => String(v).trim() !== '');
-  if (!allFilled) {
-    alert('모든 항목을 입력해 주세요.\n(Please fill in all fields before continuing.)');
-    psychoJS.gui.dialogComponent.button = undefined;
-    psychoJS.schedule(psychoJS.gui.DlgFromDict({
-      dictionary: expInfo,
-      title:      '연구 참여 정보 입력',
-    }));
-    psychoJS.scheduleCondition(checkDialogAndProceed, flowScheduler, dialogCancelScheduler);
-    return false;
-  }
-  return true;
-}
-
-psychoJS.scheduleCondition(checkDialogAndProceed, flowScheduler, dialogCancelScheduler);
+    const allFilled = Object.values(expInfo).every(v => String(v).trim() !== '');
+    if (!allFilled) {
+      alert('모든 항목을 입력해 주세요.\n(Please fill in all fields before continuing.)');
+      psychoJS.gui.dialogComponent.button = undefined;
+      psychoJS.schedule(psychoJS.gui.DlgFromDict({
+        dictionary: expInfo,
+        title:      '연구 참여 정보 입력',
+      }));
+      psychoJS.scheduleCondition(checkDialogAndProceed, flowScheduler, dialogCancelScheduler);
+      return false;
+    }
+    return true;
+  },
+  flowScheduler,
+  dialogCancelScheduler,
+);
 
 // JS only: queue all routines in order (equivalent to Python main())
 flowScheduler.add(updateInfo);                
