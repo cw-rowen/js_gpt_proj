@@ -264,17 +264,13 @@ psychoJS.scheduleCondition(
 
     const allFilled = Object.values(expInfo).every(v => String(v).trim() !== '');
     if (!allFilled) {
-      // Non-blocking: inject error text into the dialog DOM
-      const existing = document.getElementById('_dlgError');
-      if (!existing) {
-        const msg = document.createElement('p');
-        msg.id = '_dlgError';
-        msg.textContent = '모든 항목을 입력해 주세요. (Please fill in all fields.)';
-        msg.style.cssText = 'color:red; font-weight:bold; text-align:center; margin:8px 0;';
-        const dlg = document.querySelector('.dialog, .psychojs-dialog, [role="dialog"]');
-        if (dlg) dlg.appendChild(msg);
-      }
+      console.warn('모든 항목을 입력해 주세요.');
       psychoJS.gui.dialogComponent.button = undefined;
+      psychoJS.schedule(psychoJS.gui.DlgFromDict({
+        dictionary: expInfo,
+        title:      '연구 참여 정보 입력',
+      }));
+      psychoJS.scheduleCondition(checkDialogAndProceed, flowScheduler, dialogCancelScheduler);
       return false;
     }
     return true;
@@ -451,7 +447,7 @@ async function experimentInit() {
     font:        CFG.font,
     bold:        CFG.text_bold,
     alignText:   'left',
-    anchor:      'left',
+    anchorHoriz: 'left',
     units:       'height',
     wrapWidth:   wrapWidth,
     depth:        -1,
