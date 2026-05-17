@@ -244,6 +244,7 @@ psychoJS.openWindow({
   backgroundFit:   'none',
 });
 
+
 // show the participant info dialog (equivalent to Python gui.DlgFromDict())
 psychoJS.schedule(psychoJS.gui.DlgFromDict({
   dictionary: expInfo,
@@ -254,6 +255,7 @@ psychoJS.schedule(psychoJS.gui.DlgFromDict({
 const flowScheduler         = new Scheduler(psychoJS);
 const dialogCancelScheduler = new Scheduler(psychoJS);
 
+// Wait for the user to click OK or Cancel — don't proceed until button is set
 psychoJS.scheduleCondition(
   () => {
     if (!psychoJS.gui.dialogComponent) return false;
@@ -264,14 +266,18 @@ psychoJS.scheduleCondition(
   dialogCancelScheduler,
 );
 
-// Patch the OK button after the dialog renders, on the next frame
+// Intercept the OK button to block submission if any field is empty.
+// Retries each frame until the button exists (it's created on the first scheduler tick).
 function patchDialogOKButton() {
   const okBtn = document.getElementById('dialogOK');
   if (!okBtn) { requestAnimationFrame(patchDialogOKButton); return; }
 
   const original = okBtn.onclick;
   okBtn.onclick = function(e) {
-    const allFilled = Object.values(expInfo).every(v => String(v).trim() !== '');
+    // Read current values directly from the DOM inputs, not expInfo,
+    // because expInfo only gets updated when _onStartExperiment fires
+    const inputs = document.querySelectorAll('#experiment-dialog input[type="text"]');
+    const allFilled = [...inputs].every(inp => inp.value.trim() !== '');
     if (!allFilled) {
       let warn = document.getElementById('_fillWarning');
       if (!warn) {
@@ -287,7 +293,6 @@ function patchDialogOKButton() {
   };
 }
 requestAnimationFrame(patchDialogOKButton);
-
 
 
 // JS only: queue all routines in order (equivalent to Python main())
