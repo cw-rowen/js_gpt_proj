@@ -36,7 +36,7 @@ const CFG = {
   scale_x_right:          0.42,     // pos. of rightmost circle 
 
   // endorser label location
-  label_x:               -0.45,   
+  label_x:               -0.55,   
   label_y:                0.35,
 };
 
@@ -264,13 +264,17 @@ psychoJS.scheduleCondition(
 
     const allFilled = Object.values(expInfo).every(v => String(v).trim() !== '');
     if (!allFilled) {
-      console.warn('모든 항목을 입력해 주세요.');
       psychoJS.gui.dialogComponent.button = undefined;
-      psychoJS.schedule(psychoJS.gui.DlgFromDict({
-        dictionary: expInfo,
-        title:      '연구 참여 정보 입력',
-      }));
-      psychoJS.scheduleCondition(checkDialogAndProceed, flowScheduler, dialogCancelScheduler);
+      // show error message in dialog without blocking
+      if (!document.getElementById('_dlgError')) {
+        const msg = document.createElement('p');
+        msg.id = '_dlgError';
+        msg.textContent = '모든 항목을 입력해 주세요.';
+        msg.style.cssText = 'color:red; font-weight:bold; text-align:center; margin:8px 0;';
+        // append to whatever element is visible — check devtools for the right selector
+        const dlg = document.querySelector('.dialog, .psychojs-dialog, [role="dialog"]');
+        if (dlg) dlg.appendChild(msg);
+      }
       return false;
     }
     return true;
@@ -447,7 +451,7 @@ async function experimentInit() {
     font:        CFG.font,
     bold:        CFG.text_bold,
     alignText:   'left',
-    anchorHoriz: 'left',
+    anchor:      'left',
     units:       'height',
     wrapWidth:   wrapWidth,
     depth:        -1,
@@ -470,7 +474,7 @@ async function experimentInit() {
     font:        CFG.font,
     bold:        CFG.text_bold,
     alignText:   'center',
-    anchorHoriz: 'center',
+    anchor:      'center',
     units:       'height',
     wrapWidth:   undefined,
     depth:       -2,
@@ -507,7 +511,7 @@ async function experimentInit() {
     font:        CFG.font,
     bold:        CFG.text_bold,
     alignText:   'left',
-    anchorHoriz: 'left',
+    anchor:      'left',
     units:       'height',
     wrapWidth:   undefined,
     depth:       -1,        // draws in front of infoStim & questionStim (depth:0) 
