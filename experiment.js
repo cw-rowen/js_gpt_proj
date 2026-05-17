@@ -250,6 +250,15 @@ psychoJS.schedule(psychoJS.gui.DlgFromDict({
   title:      '연구 참여 정보 입력',
 }));
 
+// JS only: schedulers for normal flow and cancelled dialog flow
+const flowScheduler         = new Scheduler(psychoJS);
+const dialogCancelScheduler = new Scheduler(psychoJS);
+
+psychoJS.scheduleCondition(
+  () => psychoJS.gui.dialogComponent?.button === 'OK',
+  flowScheduler,
+  dialogCancelScheduler,
+);
 
 // Patch the OK button after the dialog renders, on the next frame
 function patchDialogOKButton() {
@@ -275,9 +284,7 @@ function patchDialogOKButton() {
 }
 requestAnimationFrame(patchDialogOKButton);
 
-// JS only: schedulers for normal flow and cancelled dialog flow
-const flowScheduler         = new Scheduler(psychoJS);
-const dialogCancelScheduler = new Scheduler(psychoJS);
+
 
 // JS only: queue all routines in order (equivalent to Python main())
 flowScheduler.add(updateInfo);                
