@@ -227,7 +227,7 @@ const psychoJS = new PsychoJS({});
 
 // participant input fields 
 const expInfo = {
-  '참가자 ID': '',
+  '참여자 ID': '',
   '친구 이름 1': '',
   '친구 이름 2': '',
   '친구 이름 3': '',
