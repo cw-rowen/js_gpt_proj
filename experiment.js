@@ -8,7 +8,7 @@ const { Scheduler } = util;
 // ─────────────────────────────────────────────
 const CFG = {
   product_dur:            4.0,    // secs that the product is shown 
-  info_dur:               9.0,    // secs that the endorsement is shown
+  info_dur:               8.5,    // secs that the endorsement is shown
   fix_min:                0.5,    // fixation jitter range
   fix_max:                1.5,
 
@@ -58,7 +58,7 @@ const INFO_LABEL_MAP = {
 const QUESTION_DEFS = {
   credEX:     { img: 'stim/03_question/credibility_EX.png',      left: '전혀 전문적이지 않다', right: '매우 전문적이다' },
   credCON:    { img: 'stim/03_question/credibility_CON.png',     left: '전혀 반영하지 않는다', right: '매우 반영한다'  },
-  credPEER:   { img: 'stim/03_question/credibility_PEER.png',    left: '전혀 가깝지 않다',     right: '매우 가깝다'    },
+  credPEER:   { img: 'stim/03_question/credibility_PEER.png',    left: '전혀 공감되지 않는다',     right: '매우 공감된다'    },
   credGen:    { img: 'stim/03_question/credibility_general.png', left: '전혀 믿지 않음',       right: '매우 신뢰함'    },
   preference: { img: 'stim/03_question/preference.png',          left: '전혀 선호하지 않음',   right: '매우 선호함'    },
 };
@@ -255,7 +255,7 @@ psychoJS.schedule(psychoJS.gui.DlgFromDict({
 const flowScheduler         = new Scheduler(psychoJS);
 const dialogCancelScheduler = new Scheduler(psychoJS);
 
-// Wait for the user to click OK or Cancel — don't proceed until button is set
+// wait for the user to click OK or Cancel — don't proceed until button is set
 psychoJS.scheduleCondition(
   () => {
     if (!psychoJS.gui.dialogComponent) return false;
@@ -266,16 +266,15 @@ psychoJS.scheduleCondition(
   dialogCancelScheduler,
 );
 
-// Intercept the OK button to block submission if any field is empty.
-// Retries each frame until the button exists (it's created on the first scheduler tick).
+// intercept the OK button to block submission if any field is empty
+// retries each frame until the button exists
 function patchDialogOKButton() {
   const okBtn = document.getElementById('dialogOK');
   if (!okBtn) { requestAnimationFrame(patchDialogOKButton); return; }
 
   const original = okBtn.onclick;
   okBtn.onclick = function(e) {
-    // Read current values directly from the DOM inputs, not expInfo,
-    // because expInfo only gets updated when _onStartExperiment fires
+    // read current values directly from the DOM inputs, not expInfo
     const inputs = document.querySelectorAll('#experiment-dialog input[type="text"]');
     const allFilled = [...inputs].every(inp => inp.value.trim() !== '');
     if (!allFilled) {
@@ -492,6 +491,23 @@ async function experimentInit() {
     depth:       -2,
   });
   infoPagesKey = new core.Keyboard({ psychoJS, clock: new util.Clock(), waitForStart: true });
+
+  // "starting soon" message — appears on the info pages when space is pressed successfully
+  countdownStim = new visual.TextStim({
+    win, name: 'countdownStim',
+    text:        '',
+    pos:         [0, -0.4],
+    height:      CFG.text_height_big,
+    color:       new util.Color('lime'),
+    font:        CFG.font,
+    bold:        CFG.text_bold,
+    alignText:   'center',
+    anchor:      'center',
+    units:       'height',
+    wrapWidth:   1.2,
+    depth:       -2,
+  });
+
 
   fixStim = new visual.ImageStim({
     win, name: 'fixStim',
@@ -766,6 +782,7 @@ let _infoAccumTime;          // accumulated dwell time
 let _infoPageEnteredAt;      // clock time when current page was entered
 let _infoWarnVisible;        // whether warning text is currently showing
 let _infoWarnStartT;         // when warning appeared (for auto-hide)
+let _infoStartingT;          // when "starting soon" message appeared (null = not yet shown)
 const INFO_MIN_DUR  = 1.5;   // minimum seconds required on each page
 const INFO_WARN_DUR = 1.5;   // how long the warning text stays visible
 
@@ -784,6 +801,8 @@ function infoPagesRoutineBegin() {
     _infoPageEnteredAt = 0;
     _infoWarnVisible   = false;
     _infoWarnStartT    = null;
+    _infoStartingT     = null;
+
 
     infoPageStim.setImage('stim/04_intro/info_1.png');
     infoPageStim.setAutoDraw(true);
@@ -840,7 +859,13 @@ function infoPagesRoutineEachFrame() {
         const enoughTime = _infoDwell(1, t) >= INFO_MIN_DUR && _infoDwell(2, t) >= INFO_MIN_DUR;
 
         if (seenBoth && enoughTime) {
-          continueRoutine = false;
+          // clear warning if still showing, then display starting-soon message for 1 s
+          if (_infoWarnVisible) { infoPageWarnStim.setAutoDraw(false); _infoWarnVisible = false; }
+          if (_infoStartingT === null) {
+            countdownStim.setText('잠시 후 실험이 시작됩니다.');
+            countdownStim.setAutoDraw(true);
+            _infoStartingT = t;
+          }
         } else if (!_infoWarnVisible) {
           infoPageWarnStim.setAutoDraw(true);
           _infoWarnVisible = true; _infoWarnStartT = t;
@@ -853,6 +878,9 @@ function infoPagesRoutineEachFrame() {
       infoPageWarnStim.setAutoDraw(false); _infoWarnVisible = false;
     }
 
+    // advance after starting-soon message has lingered 1 second
+    if (_infoStartingT !== null && (t - _infoStartingT) >= 1.0) continueRoutine = false;
+
     if (psychoJS.experiment.experimentEnded) return quitPsychoJS('Experiment ended', false);
     if (!continueRoutine) return Scheduler.Event.NEXT;
     return Scheduler.Event.FLIP_REPEAT;
@@ -864,6 +892,7 @@ function infoPagesRoutineEnd() {
     infoPageStim.setAutoDraw(false);
     infoLabelStim.setAutoDraw(false);
     infoPageWarnStim.setAutoDraw(false);
+    countdownStim.setAutoDraw(false);
     infoPagesKey.stop(); routineTimer.reset();
     return Scheduler.Event.NEXT;
   };
@@ -906,7 +935,7 @@ function finalRoutineEachFrame() {
     }
     if (psychoJS.experiment.experimentEnded) return quitPsychoJS('Experiment ended', false);
     // auto-advance after 3.0 seconds — no keypress needed to close screen
-    if (t >= 3.0) return Scheduler.Event.NEXT;
+    if (t >= 6.0) return Scheduler.Event.NEXT;
 
     return Scheduler.Event.FLIP_REPEAT;
   };
